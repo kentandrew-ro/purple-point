@@ -18,7 +18,11 @@ document.getElementById("loginSubmit").addEventListener("click", async () => {
 
     if (response.ok) {
       alert("Success: " + data.message);
-      window.location.href = "/patientPage.html";
+      if (data.role === "admin") {
+        window.location.href = "/adminPage.html";
+      } else {
+        window.location.href = "/patientPage.html";
+      }
     } else {
       alert("Error: " + data.error);
     }
