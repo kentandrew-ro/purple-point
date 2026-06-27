@@ -31,3 +31,16 @@ CREATE TABLE IF NOT EXISTS patients (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
+
+CREATE TABLE IF NOT EXISTS appointments (
+  appointment_id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL,
+  appointment_date DATE NOT NULL,
+  appointment_time TIME NOT NULL,
+  appointment_type ENUM('consultation', 'cleaning', 'filling', 'extraction', 'other') NOT NULL,
+  appointment_status ENUM('scheduled', 'completed', 'cancelled') NOT NULL DEFAULT 'scheduled',
+  reason_for_visit TEXT,
+  cancel_reason TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+);
