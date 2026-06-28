@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS appointments (
   appointment_date DATE NOT NULL,
   appointment_time TIME NOT NULL,
   appointment_type ENUM('consultation', 'cleaning', 'filling', 'extraction', 'other') NOT NULL,
-  appointment_status ENUM('scheduled', 'completed', 'cancelled') NOT NULL DEFAULT 'scheduled',
+  appointment_status ENUM('scheduled', 'confirmed', 'pending', 'completed', 'cancelled') NOT NULL DEFAULT 'scheduled',
   reason_for_visit TEXT,
   cancel_reason TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

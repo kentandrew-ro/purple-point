@@ -3,9 +3,198 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Admin Page</title>
+    <title>Admin Page - PurplePoint</title>
+    <style>
+      body {
+        display: flex;
+        margin: 0;
+        height: 100vh;
+      }
+      .sidebar {
+        width: 200px;
+        padding: 20px;
+        border-right: 1px solid #ccc;
+      }
+      .sidebar ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .sidebar ul li {
+        margin-bottom: 8px;
+      }
+      .sidebar ul li a {
+        text-decoration: none;
+      }
+      .sidebar ul li a:hover {
+        text-decoration: underline;
+      }
+      .sidebar .section-label {
+        font-size: 11px;
+        margin: 16px 0 4px;
+      }
+      .content {
+        flex-grow: 1;
+        padding: 24px;
+        overflow-y: auto;
+      }
+      .stats {
+        display: flex;
+        gap: 16px;
+        margin: 16px 0;
+      }
+      .stat-card {
+        padding: 16px;
+        min-width: 140px;
+      }
+      .stat-card .number {
+        font-size: 28px;
+        font-weight: bold;
+      }
+      .stat-card .label {
+        font-size: 13px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+      }
+      th,
+      td {
+        border: 1px solid #ccc;
+        padding: 8px 12px;
+        text-align: left;
+        font-size: 14px;
+      }
+      /* .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        font-size: 12px;
+        border: 1px solid #ccc;
+      }
+      button {
+        padding: 6px 12px;
+        cursor: pointer;
+      } */
+    </style>
   </head>
   <body>
-    <h1>Welcome Admin</h1>
+    <div class="sidebar">
+      <strong>PurplePoint</strong> <small>Admin</small> <br /><br />
+      <span class="section-label">Overview</span>
+      <ul>
+        <li><a href="#" onclick="showTab('dashboard')">Dashboard</a></li>
+      </ul>
+      <span class="section-label">Appointments</span>
+      <ul>
+        <li>
+          <a href="#" onclick="showTab('view-appointments')"
+            >View Appointments</a
+          >
+        </li>
+        <li>
+          <a href="#" onclick="showTab('set-schedules')">Set Schedules</a>
+        </li>
+      </ul>
+      <span class="section-label">Patients</span>
+      <ul>
+        <li>
+          <a href="#" onclick="showTab('patient-info')">Patient Information</a>
+        </li>
+        <li>
+          <a href="#" onclick="showTab('dental-records')">Dental Records</a>
+        </li>
+      </ul>
+      <span class="section-label">Finance &amp; Logs</span>
+      <ul>
+        <li>
+          <a href="#" onclick="showTab('billing')">Billing &amp; Payments</a>
+        </li>
+        <li><a href="#" onclick="showTab('audit-logs')">Audit Logs</a></li>
+      </ul>
+      <span class="section-label">Staff</span>
+      <ul>
+        <li>
+          <a href="#" onclick="showTab('doctor-profiles')">Doctor Profiles</a>
+        </li>
+      </ul>
+      <br />
+      <button onclick="signOut()">Sign Out</button>
+    </div>
+
+    <div class="content">
+      <div id="tab-dashboard">
+        <h2>Dashboard</h2>
+        <p id="welcome-date">Welcome back, Admin.</p>
+
+        <div class="stats">
+          <div class="stat-card">
+            <div class="number" id="stat-total-patients">--</div>
+            <div class="label">Total Patients</div>
+          </div>
+          <div class="stat-card">
+            <div class="number" id="stat-appointments-today">--</div>
+            <div class="label">Appointments Today</div>
+          </div>
+          <div class="stat-card">
+            <div class="number" id="stat-pending-review">--</div>
+            <div class="label">Pending Review</div>
+          </div>
+          <div class="stat-card">
+            <div class="number" id="stat-outstanding-balances">--</div>
+            <div class="label">Outstanding Balances</div>
+          </div>
+        </div>
+
+        <h3>Today's Schedule</h3>
+        <table id="schedule-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Patient</th>
+              <th>Doctor</th>
+              <th>Reason</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="schedule-body">
+            <tr>
+              <td colspan="6">Loading...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="tab-view-appointments" style="display: none">
+        <h2>View Appointments</h2>
+        <p>(Content goes here)</p>
+      </div>
+      <div id="tab-set-schedules" style="display: none">
+        <h2>Set Schedules</h2>
+        <p>(Content goes here)</p>
+      </div>
+      <div id="tab-patient-info" style="display: none">
+        <h2>Patient Information</h2>
+        <p>(Content goes here)</p>
+      </div>
+      <div id="tab-dental-records" style="display: none">
+        <h2>Dental Records</h2>
+        <p>(Content goes here)</p>
+      </div>
+      <div id="tab-billing" style="display: none">
+        <h2>Billing &amp; Payments</h2>
+        <p>(Content goes here)</p>
+      </div>
+      <div id="tab-audit-logs" style="display: none">
+        <h2>Audit Logs</h2>
+        <p>(Content goes here)</p>
+      </div>
+      <div id="tab-doctor-profiles" style="display: none">
+        <h2>Doctor Profiles</h2>
+        <p>(Content goes here)</p>
+      </div>
+    </div>
+
+    <script src="/js/adminPage.js"></script>
   </body>
 </html>

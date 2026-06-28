@@ -25,9 +25,6 @@ function parseAppointmentDateTime(value) {
 function parseDateOnly(dateVal) {
   if (!dateVal) return null;
 
-  // Normalize to YYYY-MM-DD regardless of whether the driver returns a
-  // Date object or a string like "2026-06-30T00:00:00.000Z".
-  // toISOString() is always UTC, so slicing gives the correct date.
   let iso;
   if (
     typeof dateVal === "object" &&
@@ -95,7 +92,7 @@ function renderAppointmentsCalendar(
     year: "numeric",
   });
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const startWeekday = new Date(currentYear, currentMonth, 1).getDay(); // 0 = Sun
+  const startWeekday = new Date(currentYear, currentMonth, 1).getDay();
 
   container.innerHTML = `
     <div style="margin-top:8px;">
@@ -134,7 +131,6 @@ function renderAppointmentsCalendar(
 
   const calBody = container.querySelector("#cal-body");
 
-  // Empty cells before the 1st
   for (let i = 0; i < startWeekday; i++) {
     const empty = document.createElement("div");
     empty.style.cssText =
@@ -142,7 +138,6 @@ function renderAppointmentsCalendar(
     calBody.appendChild(empty);
   }
 
-  // Day cells
   for (let day = 1; day <= daysInMonth; day++) {
     const cell = document.createElement("div");
     cell.style.cssText =

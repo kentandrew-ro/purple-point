@@ -343,7 +343,13 @@ app.post("/api/appointments", async (req, res) => {
         .json({ ok: false, error: "Invalid appointment_type." });
     }
 
-    const validStatuses = ["scheduled", "completed", "cancelled"];
+    const validStatuses = [
+      "scheduled",
+      "confirmed",
+      "pending",
+      "completed",
+      "cancelled",
+    ];
     if (!validStatuses.includes(appointment_status)) {
       return res
         .status(400)
@@ -443,12 +449,80 @@ app.post("/api/appointments/:id/cancel", async (req, res) => {
   }
 });
 
+app.get("/api/dashboard/stats", async (req, res) => {
+  if (!req.session.userId)
+    return res.status(401).json({ error: "Not logged in" });
+  if (req.session.role !== "admin")
+    return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    const [[{ total_patients }]] = await pool.execute(
+      "SELECT COUNT(*) AS total_patients FROM patients",
+    );
+
+    const [[{ appointments_today }]] = await pool.execute(
+      `SELECT COUNT(*) AS appointments_today
+       FROM appointments
+       WHERE appointment_date = CURDATE()
+         AND appointment_status != 'cancelled'`,
+    );
+
+    const [[{ pending_review }]] = await pool.execute(
+      `SELECT COUNT(*) AS pending_review
+       FROM appointments
+       WHERE appointment_status IN ('scheduled', 'pending')`,
+    );
+
+    return res.json({
+      total_patients,
+      appointments_today,
+      pending_review,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err?.message || "Database error" });
+  }
+});
+
+app.get("/api/dashboard/schedule", async (req, res) => {
+  if (!req.session.userId)
+    return res.status(401).json({ error: "Not logged in" });
+  if (req.session.role !== "admin")
+    return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT
+         DATE_FORMAT(a.appointment_time, '%h:%i %p')                          AS time,
+         CONCAT(p.first_name, ' ', p.last_name)                               AS patient,
+         COALESCE(NULLIF(a.reason_for_visit, ''), a.appointment_type)         AS reason,
+         a.appointment_status                                                  AS status,
+         a.appointment_id
+       FROM appointments a
+       JOIN patients p ON p.patient_id = a.patient_id
+       WHERE a.appointment_date = CURDATE()
+         AND a.appointment_status != 'cancelled'
+       ORDER BY a.appointment_time ASC`,
+    );
+
+    return res.json(rows);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err?.message || "Database error" });
+  }
+});
+
 app.get("/patientPage.html", (req, res) => {
   if (!req.session.userId) return res.redirect("/login.html");
   if (req.session.role !== "patient") return res.redirect("/adminPage.html");
   res.sendFile(
     path.join(__dirname, "protected", "patient", "patientPage.html"),
   );
+});
+
+app.get("/js/patientPage.js", (req, res) => {
+  if (!req.session.userId) return res.status(401).send("Unauthorized");
+  res.sendFile(path.join(__dirname, "protected", "js", "patientPage.js"));
 });
 
 app.get("/adminPage.html", (req, res) => {
@@ -478,6 +552,12 @@ app.get("/js/profile.js", (req, res) => {
 app.get("/js/appointments.js", (req, res) => {
   if (!req.session.userId) return res.status(401).send("Unauthorized");
   res.sendFile(path.join(__dirname, "protected", "js", "appointments.js"));
+});
+
+app.get("/js/adminPage.js", (req, res) => {
+  if (!req.session.userId) return res.status(401).send("Unauthorized");
+  if (req.session.role !== "admin") return res.status(403).send("Forbidden");
+  res.sendFile(path.join(__dirname, "protected", "js", "adminPage.js"));
 });
 
 app.listen(PORT, () => {});
