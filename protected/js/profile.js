@@ -11,7 +11,6 @@ async function submitPatientForm(e) {
     date_of_birth: form.date_of_birth.value,
     gender: form.gender.value,
     contact_number: form.contact_number.value || "",
-    email: form.email.value || "",
     house_no: form.house_no.value || "",
     street: form.street.value || "",
     barangay: form.barangay.value || "",
@@ -60,7 +59,6 @@ async function prefillForm(form) {
         : "";
       form.gender.value = p.gender || "";
       form.contact_number.value = p.contact_number || "";
-      form.email.value = p.email || "";
       form.house_no.value = p.house_no || "";
       form.street.value = p.street || "";
       form.barangay.value = p.barangay || "";

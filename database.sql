@@ -21,7 +21,6 @@ CREATE TABLE IF NOT EXISTS patients (
   date_of_birth DATE NOT NULL,
   gender ENUM('male', 'female') NOT NULL,
   contact_number VARCHAR(20) NOT NULL,
-  email VARCHAR(150) UNIQUE NOT NULL,
   house_no VARCHAR(20) NOT NULL,
   street VARCHAR(50) NOT NULL,
   barangay VARCHAR(50) NOT NULL,
@@ -43,4 +42,57 @@ CREATE TABLE IF NOT EXISTS appointments (
   cancel_reason TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+);
+
+CREATE TABLE IF NOT EXISTS dental_records (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL,
+  visit_date DATE NOT NULL,
+  dentist VARCHAR(100),
+  diagnosis TEXT,
+  treatment TEXT,
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS staff (
+  staff_id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT UNIQUE,
+  first_name VARCHAR(100) NOT NULL,
+  last_name VARCHAR(100) NOT NULL,
+  date_of_birth DATE NOT NULL,
+  gender ENUM('male', 'female') NOT NULL,
+  contact_number VARCHAR(20) NOT NULL,
+  email VARCHAR(150) UNIQUE NOT NULL,
+  shift_schedule VARCHAR(100) NOT NULL,
+  hire_date DATE NOT NULL,
+  employment_status ENUM('Active', 'On-leave', 'Terminated') NOT NULL DEFAULT 'Active',
+  -- FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dentist (
+  dentist_id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT UNIQUE,
+  first_name VARCHAR(100) NOT NULL,
+  last_name VARCHAR(100) NOT NULL,
+  date_of_birth DATE NOT NULL,
+  gender ENUM('male', 'female') NOT NULL,
+  contact_number VARCHAR(20) NOT NULL,
+  email VARCHAR(150) UNIQUE NOT NULL,
+  specialization VARCHAR(20) NOT NULL,
+  license_number INT NOT NULL
+  -- FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dentist_schedule (
+  schedule_id INT AUTO_INCREMENT PRIMARY KEY,
+  dentist_id INT NOT NULL,
+  day_of_week ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  -- effective_from DATE NOT NULL,
+  -- effective_to DATE NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE,
+  FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id)
 );
