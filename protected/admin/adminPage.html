@@ -341,7 +341,20 @@
 
       <div id="tab-patient-info" style="display: none">
         <h2>Patient Information</h2>
-        <p>(Content goes here)</p>
+        <div class="card" style="margin-top: 16px;">
+          <div style="position: relative;" class="field">
+            <label for="patient-info-search">Search patient</label>
+            <input
+              id="patient-info-search"
+              type="text"
+              placeholder="Search by name, contact, or email"
+              autocomplete="off"
+              style="width: 100%; box-sizing: border-box;"
+            />
+            <div id="patient-info-suggestions" class="suggestions"></div>
+          </div>
+          <div id="patient-info-details" style="margin-top: 16px;"></div>
+        </div>
       </div>
       <div id="tab-dental-records" style="display: none">
         <h2>Dental Records</h2>

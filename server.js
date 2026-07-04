@@ -888,13 +888,67 @@ app.get('/api/patients/search', async (req, res) => {
     if (!q) return res.json([]);
     const search = `%${q}%`;
     const [rows] = await pool.execute(
-      `SELECT patient_id, first_name, last_name, contact_number, email
-         FROM patients
-        WHERE first_name LIKE ? OR last_name LIKE ? OR CONCAT(first_name, ' ', last_name) LIKE ? OR email LIKE ? OR contact_number LIKE ?
-        LIMIT 12`,
+      `SELECT
+         p.patient_id,
+         p.first_name,
+         p.last_name,
+         p.contact_number,
+         u.email
+       FROM patients p
+       LEFT JOIN users u ON u.user_id = p.user_id
+       WHERE p.first_name LIKE ?
+          OR p.last_name LIKE ?
+          OR CONCAT(p.first_name, ' ', p.last_name) LIKE ?
+          OR u.email LIKE ?
+          OR p.contact_number LIKE ?
+       LIMIT 12`,
       [search, search, search, search, search],
     );
     return res.json(rows);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err?.message || 'Database error' });
+  }
+});
+
+app.get('/api/patients/:id', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+
+  const patientId = parseInt(req.params.id, 10);
+  if (!patientId) {
+    return res.status(400).json({ ok: false, error: 'Invalid patient ID.' });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT
+         p.patient_id, p.user_id, p.first_name, p.last_name,
+         p.date_of_birth, p.gender, p.contact_number,
+         p.house_no, p.street, p.barangay, p.city, p.zip_code,
+         p.blood_type, p.created_at, u.email
+       FROM patients p
+       LEFT JOIN users u ON u.user_id = p.user_id
+       WHERE p.patient_id = ?`,
+      [patientId],
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ ok: false, error: 'Patient not found.' });
+    }
+
+    const [[appointmentCountRow]] = await pool.execute(
+      'SELECT COUNT(*) AS appointment_count FROM appointments WHERE patient_id = ?',
+      [patientId],
+    );
+
+    return res.json({
+      ok: true,
+      patient: {
+        ...rows[0],
+        appointment_count: appointmentCountRow?.appointment_count || 0,
+      },
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: err?.message || 'Database error' });
@@ -980,6 +1034,7 @@ app.post("/api/admin/users/promote", async (req, res) => {
     const specialization = requireField(body, "specialization");
     const license_number_raw = requireField(body, "license_number");
     const license_number = license_number_raw ? Number(license_number_raw) : null;
+    const employment_status = requireField(body, "employment_status") || "Active";
     const shift_schedule = requireField(body, "shift_schedule");
     const missing = [];
     if (!user_id) missing.push("user_id");
@@ -1062,8 +1117,8 @@ app.post("/api/admin/users/promote", async (req, res) => {
     const [result] = await pool.execute(
       `INSERT INTO staff (
          first_name, last_name, date_of_birth, gender, contact_number,
-         email, shift_schedule, hire_date
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         email, shift_schedule, hire_date, employment_status
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         user.first_name,
         user.last_name,
@@ -1073,6 +1128,7 @@ app.post("/api/admin/users/promote", async (req, res) => {
         user.email,
         shift_schedule,
         hire_date,
+        employment_status,
       ],
     );
 

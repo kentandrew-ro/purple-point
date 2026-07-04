@@ -307,6 +307,66 @@ function renderPatientSuggestions(patients) {
     .join('');
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderPatientInfoSuggestions(patients) {
+  const list = document.getElementById('patient-info-suggestions');
+  if (!list) return;
+  if (!patients || !patients.length) {
+    list.innerHTML = '<div style="padding:10px;color:#666;">No patients found.</div>';
+    return;
+  }
+  list.innerHTML = patients
+    .map((p) => `<div class="suggestion-item" data-patient-id="${p.patient_id}">${p.first_name} ${p.last_name} · ${p.email || p.contact_number || ''}</div>`)
+    .join('');
+}
+
+function clearPatientInfoSuggestions() {
+  const list = document.getElementById('patient-info-suggestions');
+  if (list) list.innerHTML = '';
+}
+
+function clearPatientInfoDetails() {
+  const box = document.getElementById('patient-info-details');
+  if (box) box.innerHTML = '';
+}
+
+function renderPatientInfoDetails(patient) {
+  const box = document.getElementById('patient-info-details');
+  if (!box) return;
+
+  if (!patient) {
+    box.innerHTML = '<p style="color:#666;">Select a patient to view details.</p>';
+    return;
+  }
+
+  const fullName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
+  const dob = patient.date_of_birth ? new Date(patient.date_of_birth).toLocaleDateString() : 'Not provided';
+  const address = [patient.house_no, patient.street, patient.barangay, patient.city, patient.zip_code]
+    .filter(Boolean)
+    .join(', ');
+
+  box.innerHTML = `
+    <div style="border:1px solid #ddd;border-radius:8px;padding:16px;background:#fafafa;">
+      <h3 style="margin-top:0;">${escapeHtml(fullName || 'Patient')}</h3>
+      <p><strong>Email:</strong> ${escapeHtml(patient.email || 'Not provided')}</p>
+      <p><strong>Contact:</strong> ${escapeHtml(patient.contact_number || 'Not provided')}</p>
+      <p><strong>Date of birth:</strong> ${escapeHtml(dob)}</p>
+      <p><strong>Gender:</strong> ${escapeHtml(patient.gender || 'Not provided')}</p>
+      <p><strong>Blood type:</strong> ${escapeHtml(patient.blood_type || 'Not provided')}</p>
+      <p><strong>Address:</strong> ${escapeHtml(address || 'Not provided')}</p>
+      <p><strong>Appointments:</strong> ${escapeHtml(String(patient.appointment_count || 0))}</p>
+    </div>
+  `;
+}
+
 function renderDentistSuggestions(dentists, target) {
   const list = document.getElementById(target);
   if (!list) return;
@@ -371,6 +431,41 @@ async function searchPatients(query) {
   } catch (err) {
     console.error(err);
     renderPatientSuggestions([]);
+  }
+}
+
+async function searchPatientInfo(query) {
+  if (!query || query.trim().length < 1) {
+    clearPatientInfoSuggestions();
+    clearPatientInfoDetails();
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/patients/search?q=${encodeURIComponent(query)}`);
+    if (!res.ok) throw new Error('Search failed');
+    const items = await res.json();
+    renderPatientInfoSuggestions(items);
+  } catch (err) {
+    console.error(err);
+    renderPatientInfoSuggestions([]);
+  }
+}
+
+async function loadPatientInfoDetails(patientId) {
+  if (!patientId) {
+    renderPatientInfoDetails(null);
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/patients/${encodeURIComponent(patientId)}`);
+    if (!res.ok) throw new Error('Unable to load patient details');
+    const data = await res.json();
+    renderPatientInfoDetails(data?.patient || null);
+  } catch (err) {
+    console.error(err);
+    renderPatientInfoDetails(null);
   }
 }
 
@@ -757,6 +852,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const patientInfoSearch = document.getElementById('patient-info-search');
+  const patientInfoSuggestions = document.getElementById('patient-info-suggestions');
+  if (patientInfoSearch) {
+    patientInfoSearch.addEventListener('input', debounce((e) => searchPatientInfo(e.target.value || ''), 200));
+  }
+  if (patientInfoSuggestions) {
+    patientInfoSuggestions.addEventListener('click', async (e) => {
+      const el = e.target.closest('.suggestion-item'); if (!el) return;
+      const id = el.dataset.patientId;
+      const label = el.textContent || '';
+      if (patientInfoSearch) patientInfoSearch.value = label.split('·')[0].trim();
+      patientInfoSuggestions.innerHTML = '';
+      await loadPatientInfoDetails(id);
+    });
+  }
+
   const clinicDentistSearch = document.getElementById('clinic-dentist-search');
   const clinicDentistSuggestions = document.getElementById('clinic-dentist-suggestions');
   if (clinicDentistSearch) {
@@ -802,6 +913,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', (event) => {
     if (!event.target.closest('#user-search') && !event.target.closest('#user-suggestions')) {
       clearUserSuggestions();
+    }
+    if (!event.target.closest('#patient-info-search') && !event.target.closest('#patient-info-suggestions')) {
+      clearPatientInfoSuggestions();
     }
   });
 
