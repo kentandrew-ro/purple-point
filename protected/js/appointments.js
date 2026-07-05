@@ -63,6 +63,100 @@ function formatAppointmentLabel(appt) {
   return label;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function getCancellableAppointments(appointments) {
+  const activeStatuses = new Set(["scheduled", "confirmed", "pending"]);
+  return (appointments || []).filter((appt) => {
+    const status = String(appt.appointment_status || "").toLowerCase();
+    return activeStatuses.has(status);
+  });
+}
+
+function renderCancelAppointmentList(appointments, container) {
+  const cancellable = getCancellableAppointments(appointments);
+
+  if (!cancellable.length) {
+    container.innerHTML =
+      '<p style="color:#666;">No active or pending appointments to cancel.</p>';
+    return;
+  }
+
+  const rows = cancellable
+    .map((appt) => {
+      const dateLabel = appt.appointment_date
+        ? new Date(`${appt.appointment_date}T00:00:00`).toLocaleDateString([], {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
+        : "Pending date";
+      const timeLabel = formatTimeLabel(appt.appointment_time);
+      const status = escapeHtml(appt.appointment_status || "pending");
+      const title = escapeHtml(
+        `${appt.first_name || ""} ${appt.last_name || ""}`.trim() ||
+          `Appointment #${appt.appointment_id}`,
+      );
+
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #eee;">
+          <div>
+            <div style="font-weight:700;">${title}</div>
+            <div style="font-size:14px;color:#666;">${dateLabel}${timeLabel ? ` • ${timeLabel}` : ""}</div>
+            <div style="font-size:13px;color:#888;">Status: ${status}</div>
+          </div>
+          <button
+            type="button"
+            data-appointment-id="${appt.appointment_id}"
+            data-appointment-label="${escapeHtml(`Appointment #${appt.appointment_id} (${dateLabel}${timeLabel ? ` ${timeLabel}` : ""})`)}"
+            style="padding:8px 12px;border:1px solid #c0392b;background:#fff;color:#c0392b;border-radius:6px;cursor:pointer;"
+          >
+            Cancel
+          </button>
+        </div>
+      `;
+    })
+    .join("");
+
+  container.innerHTML = rows;
+
+  container.querySelectorAll("button[data-appointment-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openCancelModal(
+        button.getAttribute("data-appointment-id"),
+        button.getAttribute("data-appointment-label"),
+      );
+    });
+  });
+}
+
+let selectedAppointmentId = null;
+
+function openCancelModal(appointmentId, appointmentLabel) {
+  selectedAppointmentId = appointmentId;
+  const modal = document.getElementById("cancel-reason-modal");
+  const title = document.getElementById("cancel-modal-title");
+  const reasonInput = document.getElementById("cancel-reason-input");
+  if (modal && title && reasonInput) {
+    title.textContent = appointmentLabel || `Appointment #${appointmentId}`;
+    reasonInput.value = "";
+    modal.style.display = "flex";
+    reasonInput.focus();
+  }
+}
+
+function closeCancelModal() {
+  const modal = document.getElementById("cancel-reason-modal");
+  if (modal) modal.style.display = "none";
+}
+
 function renderAppointmentsCalendar(
   appointments,
   container,
@@ -264,22 +358,28 @@ async function handleAddSubmit(event) {
 }
 
 async function handleCancelSubmit(event) {
-  event.preventDefault();
+  event?.preventDefault?.();
 
-  const form = event.target;
   const resultBox = document.getElementById("cancel-appointment-result");
-  const appointmentId = form.appointment_id.value.trim();
-  const cancelReason = form.cancel_reason.value.trim();
+  const reasonInput = document.getElementById("cancel-reason-input");
+  const cancelReason = reasonInput?.value?.trim() || "";
+  const appointmentId = selectedAppointmentId;
+
   resultBox.innerHTML = "";
 
-  if (!appointmentId || !cancelReason) {
-    resultBox.innerHTML =
-      '<p style="color:red;">Enter both appointment_id and cancel_reason.</p>';
+  if (!appointmentId) {
+    resultBox.innerHTML = '<p style="color:red;">Please select an appointment first.</p>';
     return;
   }
 
-  const submitBtn = form.querySelector('button[type="submit"]');
-  if (submitBtn) submitBtn.disabled = true;
+  if (!cancelReason) {
+    resultBox.innerHTML =
+      '<p style="color:red;">Please enter a cancellation reason.</p>';
+    return;
+  }
+
+  const confirmBtn = document.getElementById("confirm-cancel-btn");
+  if (confirmBtn) confirmBtn.disabled = true;
   resultBox.textContent = "Cancelling appointment…";
 
   try {
@@ -296,20 +396,25 @@ async function handleCancelSubmit(event) {
     if (!response.ok || !data.ok)
       throw new Error(data.error || "Failed to cancel appointment");
 
+    closeCancelModal();
     resultBox.innerHTML = `
       <h2>Appointment Cancelled</h2>
       <p>Appointment ID: ${appointmentId}</p>
-      <p>Reason: ${cancelReason}</p>
+      <p>Reason: ${escapeHtml(cancelReason)}</p>
       <button type="button" id="cancel-back-success">Back to options</button>
     `;
+
+    const listBox = document.getElementById("cancel-appointment-list");
+    const appointments = await loadAppointments();
+    renderCancelAppointmentList(appointments, listBox);
+
     document
       .getElementById("cancel-back-success")
-      .addEventListener("click", () => showView("view-choose"));
-    form.reset();
+      ?.addEventListener("click", () => showView("view-choose"));
   } catch (err) {
     resultBox.innerHTML = `<h2>Error</h2><p>${err?.message || "Unknown error"}</p>`;
   } finally {
-    if (submitBtn) submitBtn.disabled = false;
+    if (confirmBtn) confirmBtn.disabled = false;
   }
 }
 
@@ -343,9 +448,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  document
-    .getElementById("btn-cancel")
-    ?.addEventListener("click", () => showView("view-cancel"));
+  document.getElementById("btn-cancel")?.addEventListener("click", async () => {
+    showView("view-cancel");
+    const listBox = document.getElementById("cancel-appointment-list");
+    const resultBox = document.getElementById("cancel-appointment-result");
+    if (listBox) {
+      listBox.innerHTML = "<p>Loading appointments…</p>";
+    }
+    resultBox.innerHTML = "";
+
+    try {
+      const appointments = await loadAppointments();
+      renderCancelAppointmentList(appointments, listBox);
+    } catch (err) {
+      if (listBox) {
+        listBox.innerHTML = `<h2>Error</h2><p>${err?.message || "Unable to load appointments."}</p>`;
+      }
+    }
+  });
 
   document
     .getElementById("back-from-view")
@@ -357,11 +477,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     .getElementById("back-from-add")
     ?.addEventListener("click", () => showView("view-choose"));
 
-  const cancelForm = document.getElementById("cancel-appointment-form");
-  if (cancelForm) cancelForm.addEventListener("submit", handleCancelSubmit);
   document
     .getElementById("back-from-cancel")
     ?.addEventListener("click", () => showView("view-choose"));
+  document
+    .getElementById("confirm-cancel-btn")
+    ?.addEventListener("click", handleCancelSubmit);
+  document
+    .getElementById("close-cancel-modal-btn")
+    ?.addEventListener("click", closeCancelModal);
+  document
+    .getElementById("cancel-reason-modal")
+    ?.addEventListener("click", (event) => {
+      if (event.target.id === "cancel-reason-modal") closeCancelModal();
+    });
 
   if (new URLSearchParams(window.location.search).get("view") === "1") {
     showView("view-view");

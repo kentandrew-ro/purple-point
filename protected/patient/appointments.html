@@ -72,26 +72,31 @@
     <div id="view-cancel" class="view">
       <button id="back-from-cancel" type="button">← Back</button>
       <h2>Cancel Appointment</h2>
-      <form id="cancel-appointment-form">
-        <label for="appointment-id">Appointment ID:</label><br />
-        <input
-          type="text"
-          name="appointment_id"
-          id="appointment-id"
-          placeholder="Enter Appointment ID"
-          required
-        /><br />
-        <label for="cancel-reason">Reason for Cancellation:</label><br />
-        <textarea
-          name="cancel_reason"
-          id="cancel-reason"
-          placeholder="Enter reason for cancellation"
-          required
-        ></textarea
-        ><br />
-        <button type="submit">Cancel Appointment</button>
-      </form>
+      <div id="cancel-appointment-list" style="margin-top: 16px"></div>
       <div id="cancel-appointment-result" style="margin-top: 16px"></div>
+
+      <div
+        id="cancel-reason-modal"
+        style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); align-items:center; justify-content:center; z-index:1000;"
+      >
+        <div
+          style="background:#fff; width:min(92vw, 420px); padding:20px; border-radius:12px; box-shadow:0 12px 30px rgba(0,0,0,0.2);"
+        >
+          <h3 style="margin-top:0;">Cancel Appointment</h3>
+          <p id="cancel-modal-title" style="margin-bottom:12px;"></p>
+          <label for="cancel-reason-input">Reason for cancellation</label><br />
+          <textarea
+            id="cancel-reason-input"
+            style="width:100%; min-height:90px; margin-top:8px; box-sizing:border-box;"
+            placeholder="Enter reason for cancellation"
+            required
+          ></textarea>
+          <div style="display:flex; gap:8px; margin-top:16px;">
+            <button type="button" id="confirm-cancel-btn">Confirm</button>
+            <button type="button" id="close-cancel-modal-btn">Close</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="/js/appointments.js"></script>
