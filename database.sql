@@ -31,31 +31,6 @@ CREATE TABLE IF NOT EXISTS patients (
   FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
-CREATE TABLE IF NOT EXISTS appointments (
-  appointment_id INT AUTO_INCREMENT PRIMARY KEY,
-  patient_id INT NOT NULL,
-  appointment_date DATE NOT NULL,
-  appointment_time TIME NOT NULL,
-  appointment_type ENUM('consultation', 'cleaning', 'filling', 'extraction', 'other') NOT NULL,
-  appointment_status ENUM('scheduled', 'confirmed', 'pending', 'completed', 'cancelled') NOT NULL DEFAULT 'scheduled',
-  reason_for_visit TEXT,
-  cancel_reason TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
-);
-
-CREATE TABLE IF NOT EXISTS dental_records (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  patient_id INT NOT NULL,
-  visit_date DATE NOT NULL,
-  dentist VARCHAR(100),
-  diagnosis TEXT,
-  treatment TEXT,
-  notes TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
-);
-
 CREATE TABLE IF NOT EXISTS staff (
   staff_id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT UNIQUE,
@@ -67,7 +42,7 @@ CREATE TABLE IF NOT EXISTS staff (
   email VARCHAR(150) UNIQUE NOT NULL,
   shift_schedule VARCHAR(100) NOT NULL,
   hire_date DATE NOT NULL,
-  employment_status ENUM('Active', 'On-leave', 'Terminated') NOT NULL DEFAULT 'Active',
+  employment_status ENUM('Active', 'On-leave', 'Terminated') NOT NULL DEFAULT 'Active'
   -- FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
@@ -95,4 +70,96 @@ CREATE TABLE IF NOT EXISTS dentist_schedule (
   -- effective_to DATE NOT NULL,
   is_active BOOLEAN DEFAULT TRUE,
   FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id)
+);
+
+CREATE TABLE IF NOT EXISTS appointments (
+  appointment_id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL,
+  dentist_id INT NOT NULL,
+  appointment_date DATE NOT NULL,
+  appointment_time TIME NOT NULL,
+  appointment_type ENUM('consultation', 'cleaning', 'filling', 'extraction', 'other') NOT NULL,
+  appointment_status ENUM('scheduled', 'confirmed', 'pending', 'completed', 'cancelled') NOT NULL DEFAULT 'scheduled',
+  reason_for_visit TEXT,
+  cancel_reason TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+  FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id)
+);
+
+CREATE TABLE IF NOT EXISTS dental_records (
+  dental_record_id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL,
+  appointment_id INT,
+  dentist_id INT NOT NULL,
+  recorded_by INT NOT NULL,
+  visit_date DATE NOT NULL,
+  diagnosis TEXT,
+  teeth_involved VARCHAR(255),
+  treatment_plan_notes TEXT,
+  clinical_notes TEXT,
+  follow_up_required BOOLEAN DEFAULT FALSE,
+  follow_up_date DATE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE,
+  FOREIGN KEY (appointment_id) REFERENCES appointments(appointment_id),
+  FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id),
+  FOREIGN KEY (recorded_by) REFERENCES staff(staff_id)
+);
+
+CREATE TABLE IF NOT EXISTS patient_history (
+  patient_history_id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL,
+  allergies TEXT,
+  current_medications TEXT,
+  medical_conditions TEXT,
+  last_dental_visit DATE,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS patient_records (
+  patient_records_id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL UNIQUE,
+  date_registered DATE NOT NULL DEFAULT (CURRENT_DATE),
+  emergency_contact_name VARCHAR(150) NOT NULL,
+  emergency_contact_number VARCHAR(20) NOT NULL,
+  patient_status ENUM('active', 'inactive', 'archived') NOT NULL DEFAULT 'active',
+  FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS patient_vitals (
+  patient_vitals_id INT AUTO_INCREMENT PRIMARY KEY,
+  dental_record_id INT NOT NULL,
+  staff_id INT NOT NULL,
+  blood_pressure VARCHAR(20),
+  heart_rate INT,
+  temperature DECIMAL(4,1),
+  weight DECIMAL(5,2),
+  date_recorded DATE NOT NULL,
+  FOREIGN KEY (dental_record_id) REFERENCES dental_records(dental_record_id) ON DELETE CASCADE,
+  FOREIGN KEY (staff_id) REFERENCES staff(staff_id)
+);
+
+CREATE TABLE IF NOT EXISTS tooth_chart (
+  tooth_chart_id INT AUTO_INCREMENT PRIMARY KEY,
+  dental_record_id INT NOT NULL,
+  tooth_number VARCHAR(10) NOT NULL,
+  surface VARCHAR(20),
+  condition_status VARCHAR(100),
+  recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (dental_record_id) REFERENCES dental_records(dental_record_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS treatment (
+  treatment_id INT AUTO_INCREMENT PRIMARY KEY,
+  dental_record_id INT,
+  treatment_name VARCHAR(150) NOT NULL,
+  description TEXT,
+  default_duration INT COMMENT 'minutes',
+  default_price DECIMAL(10,2) NOT NULL,
+  category VARCHAR(100),
+  is_active BOOLEAN DEFAULT TRUE,
+  FOREIGN KEY (dental_record_id) REFERENCES dental_records(dental_record_id)
 );

@@ -71,9 +71,23 @@
         font-size: 14px;
       }
 
-      .card { border: 1px solid #ddd; padding: 16px; border-radius: 10px; margin-bottom: 16px; }
-      .row { display: flex; flex-wrap: wrap; gap: 12px; }
-      .field { display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
+      .card {
+        border: 1px solid #ddd;
+        padding: 16px;
+        border-radius: 10px;
+        margin-bottom: 16px;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 220px;
+      }
       .field input,
       .field select,
       .field textarea {
@@ -81,9 +95,19 @@
         width: 100%;
         box-sizing: border-box;
       }
-      button { padding: 8px; cursor: pointer; }
-      .actions { display: flex; gap: 10px; margin-top: 10px; }
-      .result { margin-top: 12px; white-space: pre-wrap; }
+      button {
+        padding: 8px;
+        cursor: pointer;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .result {
+        margin-top: 12px;
+        white-space: pre-wrap;
+      }
       .suggestions {
         position: absolute;
         top: calc(100% + 4px);
@@ -92,7 +116,7 @@
         border: 1px solid #ccc;
         background: #fff;
         border-radius: 6px;
-        box-shadow: 0 6px 18px rgba(0,0,0,.08);
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
         z-index: 10;
         max-height: 240px;
         overflow-y: auto;
@@ -210,29 +234,42 @@
         <div id="admin-appointments-calendar">Loading appointments…</div>
       </div>
 
-      <div id="tab-set-schedules" style="display: none;">
+      <div id="tab-set-schedules" style="display: none">
         <h2>Set &amp; Manage Schedules</h2>
-        <p>Add appointments, block dates for leaves and holidays, or adjust clinic hours.</p>
-        
+        <p>
+          Add appointments, block dates for leaves and holidays, or adjust
+          clinic hours.
+        </p>
+
         <div id="view-choose" class="card">
           <button type="button" id="btn-show-add">Add Appointment</button>
           <button type="button" id="btn-show-view">Block Dates/Leave</button>
           <button type="button" id="btn-show-cancel">Clinic Hours</button>
         </div>
 
-        <div id="appointment-form-card" class="card" style="display: none;">
+        <div id="appointment-form-card" class="card" style="display: none">
           <h2>Add Appointment</h2>
           <form id="add-appointment-form">
-            <div id="patient-id-field" class="field" style="position:relative;">
+            <div id="patient-id-field" class="field" style="position: relative">
               <label for="patient-search">Patient</label>
-              <input id="patient-search" type="text" placeholder="Search patient by name, email, or contact" autocomplete="off" />
+              <input
+                id="patient-search"
+                type="text"
+                placeholder="Search patient by name, email, or contact"
+                autocomplete="off"
+              />
               <input id="patient_id" name="patient_id" type="hidden" />
               <div id="patient-suggestions" class="suggestions"></div>
             </div>
 
             <div class="field">
               <label for="appointment_date">Appointment Date</label>
-              <input id="appointment_date" name="appointment_date" type="datetime-local" required />
+              <input
+                id="appointment_date"
+                name="appointment_date"
+                type="datetime-local"
+                required
+              />
             </div>
 
             <div class="field">
@@ -249,7 +286,11 @@
 
             <div class="field">
               <label for="appointment_status">Appointment Status</label>
-              <select id="appointment_status" name="appointment_status" required>
+              <select
+                id="appointment_status"
+                name="appointment_status"
+                required
+              >
                 <option value="">Select Appointment Status</option>
                 <option value="scheduled">Scheduled</option>
                 <option value="confirmed">Confirmed</option>
@@ -261,51 +302,79 @@
 
             <div class="field">
               <label for="reason_for_visit">Reason for Visit</label>
-              <textarea id="reason_for_visit" name="reason_for_visit" placeholder="Reason for Visit"></textarea>
+              <textarea
+                id="reason_for_visit"
+                name="reason_for_visit"
+                placeholder="Reason for Visit"
+              ></textarea>
             </div>
 
             <button type="submit">Save Appointment</button>
           </form>
-          <div id="add-appointment-result" style="margin-top: 16px;"></div>
-        </div>  
-        
-        <div id="block-dates-form-card" class="card" style="display: none;">
+          <div id="add-appointment-result" style="margin-top: 16px"></div>
+        </div>
+
+        <div id="block-dates-form-card" class="card" style="display: none">
           <h2>Block Dates/Leave</h2>
           <form id="block-sched-form">
-            <div class="field" style="position:relative;">
+            <div class="field" style="position: relative">
               <label for="block-dentist-search">Dentist</label>
-              <input id="block-dentist-search" type="text" placeholder="Search dentist by name, email, or specialization" autocomplete="off" />
+              <input
+                id="block-dentist-search"
+                type="text"
+                placeholder="Search dentist by name, email, or specialization"
+                autocomplete="off"
+              />
               <input id="block_dentist_id" name="dentist_id" type="hidden" />
               <div id="block-dentist-suggestions" class="suggestions"></div>
             </div>
 
             <div class="field">
               <label for="from_date">From Date</label>
-              <input id="from_date" name="from_date" type="datetime-local" required />
+              <input
+                id="from_date"
+                name="from_date"
+                type="datetime-local"
+                required
+              />
             </div>
 
             <div class="field">
               <label for="to_date">To Date</label>
-              <input id="to_date" name="to_date" type="datetime-local" required />
+              <input
+                id="to_date"
+                name="to_date"
+                type="datetime-local"
+                required
+              />
             </div>
 
             <div class="field">
               <label for="reason_for_leave">Reason for Leave</label>
-              <textarea id="reason_for_leave" name="reason_for_leave" placeholder="Reason for Leave"></textarea>
+              <textarea
+                id="reason_for_leave"
+                name="reason_for_leave"
+                placeholder="Reason for Leave"
+              ></textarea>
             </div>
 
             <button type="submit">Save Dates</button>
           </form>
-          <div id="block-sched-result" style="margin-top: 16px;"></div>
-          <h2 style="color: red;"><i>Feature to be reviewed..</i></h2>
+          <div id="block-sched-result" style="margin-top: 16px"></div>
+          <h2 style="color: red"><i>Feature to be reviewed..</i></h2>
         </div>
 
-        <div id="clinic-hours-form-card" class="card" style="display: none;">
+        <div id="clinic-hours-form-card" class="card" style="display: none">
           <h2>Clinic Hours by Doctor</h2>
           <form id="clinic-hours-form">
-            <div class="field" style="position:relative;">
+            <div class="field" style="position: relative">
               <label for="clinic-dentist-search">Dentist</label>
-              <input id="clinic-dentist-search" type="text" placeholder="Search dentist by name, email, or specialization" autocomplete="off" />
+              <input
+                id="clinic-dentist-search"
+                type="text"
+                placeholder="Search dentist by name, email, or specialization"
+                autocomplete="off"
+              />
               <input id="clinic_dentist_id" name="dentist_id" type="hidden" />
               <div id="clinic-dentist-suggestions" class="suggestions"></div>
             </div>
@@ -335,30 +404,325 @@
 
             <button type="submit">Save Hours</button>
           </form>
-          <div id="clinic-hours-result" style="margin-top: 16px;"></div>
+          <div id="clinic-hours-result" style="margin-top: 16px"></div>
         </div>
       </div>
 
       <div id="tab-patient-info" style="display: none">
         <h2>Patient Information</h2>
-        <div class="card" style="margin-top: 16px;">
-          <div style="position: relative;" class="field">
+        <div class="card" style="margin-top: 16px">
+          <div style="position: relative" class="field">
             <label for="patient-info-search">Search patient</label>
             <input
               id="patient-info-search"
               type="text"
               placeholder="Search by name, contact, or email"
               autocomplete="off"
-              style="width: 100%; box-sizing: border-box;"
+              style="width: 100%; box-sizing: border-box"
             />
             <div id="patient-info-suggestions" class="suggestions"></div>
           </div>
-          <div id="patient-info-details" style="margin-top: 16px;"></div>
+          <div id="patient-info-details" style="margin-top: 16px"></div>
         </div>
       </div>
       <div id="tab-dental-records" style="display: none">
         <h2>Dental Records</h2>
-        <p>(Content goes here)</p>
+        <p>dental records area are foudn here.</p>
+
+        <div class="card">
+          <div class="field" style="position: relative">
+            <label for="dental-patient-search">Search Patient</label>
+            <input
+              id="dental-patient-search"
+              type="text"
+              placeholder="Name or Patient ID..."
+              autocomplete="off"
+              style="width: 100%; box-sizing: border-box"
+            />
+            <div id="dental-patient-suggestions" class="suggestions"></div>
+          </div>
+        </div>
+
+        <div id="dental-record-card" class="card" style="display: none">
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              flex-wrap: wrap;
+              gap: 8px;
+            "
+          >
+            <div>
+              <h3 id="dental-patient-name" style="margin: 0 0 4px"></h3>
+              <div
+                id="dental-patient-meta"
+                style="font-size: 13px; color: #666"
+              ></div>
+            </div>
+            <button type="button" id="btn-add-treatment">
+              + Add Treatment
+            </button>
+          </div>
+
+          <div class="row" style="margin-top: 16px; gap: 8px">
+            <button
+              type="button"
+              class="dental-subtab-btn"
+              data-subtab="tooth-chart"
+            >
+              Tooth Chart
+            </button>
+            <button
+              type="button"
+              class="dental-subtab-btn"
+              data-subtab="treatments"
+            >
+              Treatments
+            </button>
+            <button
+              type="button"
+              class="dental-subtab-btn"
+              data-subtab="vitals"
+            >
+              Vitals
+            </button>
+            <button
+              type="button"
+              class="dental-subtab-btn"
+              data-subtab="history"
+            >
+              History
+            </button>
+          </div>
+
+          <div
+            id="dental-subtab-tooth-chart"
+            class="dental-subtab-content"
+            style="margin-top: 16px"
+          >
+            <div
+              id="tooth-chart-container"
+              style="
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                padding: 16px;
+                background: #fafafa;
+              "
+            ></div>
+            <div
+              id="tooth-chart-legend"
+              style="
+                margin-top: 12px;
+                display: flex;
+                gap: 16px;
+                flex-wrap: wrap;
+                font-size: 13px;
+              "
+            ></div>
+          </div>
+
+          <div
+            id="dental-subtab-treatments"
+            class="dental-subtab-content"
+            style="display: none; margin-top: 16px"
+          >
+            <div
+              id="add-treatment-card"
+              class="card"
+              style="display: none; background: #fafafa"
+            >
+              <h3 style="margin-top: 0">Add Treatment</h3>
+              <form id="add-treatment-form">
+                <div class="row">
+                  <div class="field">
+                    <label for="treatment_date">Date</label>
+                    <input id="treatment_date" type="date" required />
+                  </div>
+                  <div class="field">
+                    <label for="treatment_procedure">Procedure</label>
+                    <input
+                      id="treatment_procedure"
+                      type="text"
+                      placeholder="e.g. Dental Cleaning"
+                      required
+                    />
+                  </div>
+                  <div class="field">
+                    <label for="treatment_teeth">Tooth(s)</label>
+                    <input
+                      id="treatment_teeth"
+                      type="text"
+                      placeholder="e.g. All, Upper arch, #8"
+                    />
+                  </div>
+                  <div class="field" style="position: relative">
+                    <label for="treatment-dentist-search">Doctor</label>
+                    <input
+                      id="treatment-dentist-search"
+                      type="text"
+                      placeholder="Search dentist by name, email, or specialization"
+                      autocomplete="off"
+                    />
+                    <input id="treatment_dentist_id" type="hidden" />
+                    <div
+                      id="treatment-dentist-suggestions"
+                      class="suggestions"
+                    ></div>
+                  </div>
+                  <div class="field">
+                    <label for="treatment_notes">Notes</label>
+                    <textarea
+                      id="treatment_notes"
+                      placeholder="Notes"
+                    ></textarea>
+                  </div>
+                </div>
+                <div class="actions">
+                  <button type="submit">Save Treatment</button>
+                  <button type="button" id="btn-cancel-add-treatment">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+            <table id="treatments-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Procedure</th>
+                  <th>Tooth(s)</th>
+                  <th>Doctor</th>
+                  <th>Notes</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="treatments-body">
+                <tr>
+                  <td colspan="6">No patient selected.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div
+            id="dental-subtab-vitals"
+            class="dental-subtab-content"
+            style="display: none; margin-top: 16px"
+          >
+            <div class="actions" style="margin-bottom: 12px">
+              <button type="button" id="btn-record-vitals">
+                + Record Vitals
+              </button>
+            </div>
+            <div
+              id="record-vitals-card"
+              class="card"
+              style="display: none; background: #fafafa"
+            >
+              <h3 style="margin-top: 0">Record Vitals</h3>
+              <form id="record-vitals-form">
+                <div class="row">
+                  <div class="field">
+                    <label for="vitals_date">Date</label>
+                    <input id="vitals_date" type="date" required />
+                  </div>
+                  <div class="field">
+                    <label for="vitals_bp">Blood Pressure</label>
+                    <input
+                      id="vitals_bp"
+                      type="text"
+                      placeholder="e.g. 118/76 mmHg"
+                    />
+                  </div>
+                  <div class="field">
+                    <label for="vitals_pulse">Pulse</label>
+                    <input
+                      id="vitals_pulse"
+                      type="text"
+                      placeholder="e.g. 72 bpm"
+                    />
+                  </div>
+                  <div class="field">
+                    <label for="vitals_temp">Temperature</label>
+                    <input
+                      id="vitals_temp"
+                      type="text"
+                      placeholder="e.g. 36.5°C"
+                    />
+                  </div>
+                  <div class="field">
+                    <label for="vitals_weight">Weight</label>
+                    <input
+                      id="vitals_weight"
+                      type="text"
+                      placeholder="e.g. 58 kg"
+                    />
+                  </div>
+                </div>
+                <div class="actions">
+                  <button type="submit">Save Vitals</button>
+                  <button type="button" id="btn-cancel-record-vitals">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+            <table id="vitals-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Blood Pressure</th>
+                  <th>Pulse</th>
+                  <th>Temperature</th>
+                  <th>Weight</th>
+                </tr>
+              </thead>
+              <tbody id="vitals-body">
+                <tr>
+                  <td colspan="5">No patient selected.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div
+            id="dental-subtab-history"
+            class="dental-subtab-content"
+            style="display: none; margin-top: 16px"
+          >
+            <div class="row">
+              <div class="field">
+                <label>Allergies</label>
+                <div id="history-allergies">—</div>
+              </div>
+              <div class="field">
+                <label>Current Medications</label>
+                <div id="history-medications">—</div>
+              </div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label>Medical History</label>
+                <div id="history-medical">—</div>
+              </div>
+              <div class="field">
+                <label>Dental History</label>
+                <div id="history-dental">—</div>
+              </div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label>Blood Type</label>
+                <div id="history-blood-type">—</div>
+              </div>
+              <div class="field">
+                <label>Emergency Contact</label>
+                <div id="history-emergency">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div id="tab-billing" style="display: none">
         <h2>Billing &amp; Payments</h2>
@@ -371,26 +735,50 @@
       <div id="tab-doctor-profiles" style="display: none">
         <h2>Doctor Profiles</h2>
 
-        <div class="row" style="margin-bottom: 16px;">
-          <div class="card" style="flex: 1;">
+        <div class="row" style="margin-bottom: 16px">
+          <div class="card" style="flex: 1">
             <h3>Doctors</h3>
-            <div id="doctor-summary-count" style="font-size: 28px; font-weight: 700;">0</div>
-            <div id="doctor-summary-list" style="margin-top: 12px; color: #444;"></div>
+            <div
+              id="doctor-summary-count"
+              style="font-size: 28px; font-weight: 700"
+            >
+              0
+            </div>
+            <div
+              id="doctor-summary-list"
+              style="margin-top: 12px; color: #444"
+            ></div>
           </div>
-          <div class="card" style="flex: 1;">
+          <div class="card" style="flex: 1">
             <h3>Staff</h3>
-            <div id="staff-summary-count" style="font-size: 28px; font-weight: 700;">0</div>
-            <div id="staff-summary-list" style="margin-top: 12px; color: #444;"></div>
+            <div
+              id="staff-summary-count"
+              style="font-size: 28px; font-weight: 700"
+            >
+              0
+            </div>
+            <div
+              id="staff-summary-list"
+              style="margin-top: 12px; color: #444"
+            ></div>
           </div>
         </div>
 
         <div class="card">
           <h2>Promote Existing User</h2>
-          <p>Search a user, select the profile type, then promote the user to admin and generate their staff/doctor profile.</p>
+          <p>
+            Search a user, select the profile type, then promote the user to
+            admin and generate their staff/doctor profile.
+          </p>
 
-          <div class="field" style="position: relative;">
+          <div class="field" style="position: relative">
             <label for="user-search">Search User</label>
-            <input id="user-search" type="text" placeholder="Search by name, email, or username" autocomplete="off" />
+            <input
+              id="user-search"
+              type="text"
+              placeholder="Search by name, email, or username"
+              autocomplete="off"
+            />
             <div id="user-suggestions" class="suggestions"></div>
           </div>
 
@@ -403,21 +791,60 @@
             </select>
           </div>
 
-          <div id="selected-user-card" class="card" style="display: none; padding: 12px; background: #f9f9f9; margin-bottom: 12px;">
+          <div
+            id="selected-user-card"
+            class="card"
+            style="
+              display: none;
+              padding: 12px;
+              background: #f9f9f9;
+              margin-bottom: 12px;
+            "
+          >
             <div><strong id="selected-user-name"></strong></div>
-            <div id="selected-user-email" style="font-size: 13px; color: #555;"></div>
-            <div id="selected-user-role" style="font-size: 13px; color: #555;"></div>
+            <div
+              id="selected-user-email"
+              style="font-size: 13px; color: #555"
+            ></div>
+            <div
+              id="selected-user-role"
+              style="font-size: 13px; color: #555"
+            ></div>
           </div>
 
-          <div id="role-extra-fields" style="display: none;">
-            <div id="doctor-extra" style="display: none;">
-              <div class="field"><label for="specialization">Specialization</label><input id="specialization" type="text" placeholder="Specialization" /></div>
-              <div class="field"><label for="license_number">License Number</label><input id="license_number" type="number" placeholder="License Number" /></div>
+          <div id="role-extra-fields" style="display: none">
+            <div id="doctor-extra" style="display: none">
+              <div class="field">
+                <label for="specialization">Specialization</label
+                ><input
+                  id="specialization"
+                  type="text"
+                  placeholder="Specialization"
+                />
+              </div>
+              <div class="field">
+                <label for="license_number">License Number</label
+                ><input
+                  id="license_number"
+                  type="number"
+                  placeholder="License Number"
+                />
+              </div>
             </div>
-            <div id="staff-extra" style="display: none;">
-              <div class="field"><label for="shift_schedule">Shift Schedule</label><input id="shift_schedule" type="text" placeholder="Shift Schedule" /></div>
+            <div id="staff-extra" style="display: none">
+              <div class="field">
+                <label for="shift_schedule">Shift Schedule</label
+                ><input
+                  id="shift_schedule"
+                  type="text"
+                  placeholder="Shift Schedule"
+                />
+              </div>
             </div>
-            <div class="field"><label for="promote_hire_date">Hire Date</label><input id="promote_hire_date" type="date" /></div>
+            <div class="field">
+              <label for="promote_hire_date">Hire Date</label
+              ><input id="promote_hire_date" type="date" />
+            </div>
           </div>
 
           <input type="hidden" id="selected-user-id" value="" />

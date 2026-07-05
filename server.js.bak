@@ -44,6 +44,8 @@ app.use(
   }),
 );
 
+/* ---------------- AUTH ---------------- */
+
 app.post("/api/signup", async (req, res) => {
   const { firstName, lastName, username, email, password, contactNumber } =
     req.body;
@@ -108,6 +110,8 @@ app.get("/api/me", (req, res) => {
   }
   res.json({ userId: req.session.userId, role: req.session.role });
 });
+
+/* ---------------- PATIENTS ---------------- */
 
 app.get("/api/patients/me", async (req, res) => {
   if (!req.session.userId) {
@@ -319,6 +323,8 @@ app.post("/api/patients", async (req, res) => {
   }
 });
 
+/* ---------------- STAFF (admin only) ---------------- */
+
 app.post("/api/staff", async (req, res) => {
   if (!req.session.userId) {
     return res.status(401).json({ error: "Not logged in" });
@@ -338,6 +344,7 @@ app.post("/api/staff", async (req, res) => {
     const email = requireField(body, "email");
     const shift_schedule = requireField(body, "shift_schedule");
     const hire_date = requireField(body, "hire_date");
+    //const employment_status = requireField(body, "employment_status");
 
     const gender = validateGender(genderRaw);
 
@@ -350,6 +357,7 @@ app.post("/api/staff", async (req, res) => {
     if (!email) missing.push("email");
     if (!shift_schedule) missing.push("shift_schedule");
     if (!hire_date) missing.push("hire_date");
+    //if (!employment_status) missing.push("employment_status");
 
     if (missing.length) {
       return res.status(400).json({
@@ -386,6 +394,8 @@ app.post("/api/staff", async (req, res) => {
       .json({ ok: false, error: err?.message || "Database error" });
   }
 });
+
+/* ---------------- DOCTORS / DENTISTS (admin only) ---------------- */
 
 app.post("/api/doctors", async (req, res) => {
   if (!req.session.userId) {
@@ -547,6 +557,8 @@ app.post("/api/dentist-schedule", async (req, res) => {
       .json({ ok: false, error: err?.message || "Database error" });
   }
 });
+
+/* ---------------- APPOINTMENTS ---------------- */
 
 app.get("/api/appointments", async (req, res) => {
   if (!req.session.userId) {
@@ -769,75 +781,7 @@ app.post("/api/appointments/:id/cancel", async (req, res) => {
   }
 });
 
-app.patch("/api/appointments/:id/status", async (req, res) => {
-  if (!req.session.userId) {
-    return res.status(401).json({ error: "Not logged in" });
-  }
-  if (req.session.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  const appointmentId = parseInt(req.params.id, 10);
-  if (!appointmentId) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "Invalid appointment ID." });
-  }
-
-  const body = req.body || {};
-  const appointment_status = requireField(body, "status");
-
-  const validStatuses = ["scheduled", "confirmed", "cancelled", "completed"];
-  if (!appointment_status || !validStatuses.includes(appointment_status)) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "Invalid appointment status." });
-  }
-
-  const cancel_reason = requireField(body, "cancel_reason") || null;
-  if (appointment_status === "cancelled" && !cancel_reason) {
-    return res.status(400).json({
-      ok: false,
-      error: "cancel_reason is required when cancelling.",
-    });
-  }
-
-  try {
-    const [existing] = await pool.execute(
-      "SELECT appointment_id FROM appointments WHERE appointment_id = ?",
-      [appointmentId],
-    );
-
-    if (!existing.length) {
-      return res
-        .status(404)
-        .json({ ok: false, error: "Appointment not found." });
-    }
-
-    if (appointment_status === "cancelled") {
-      await pool.execute(
-        `UPDATE appointments
-         SET appointment_status = ?, cancel_reason = ?
-         WHERE appointment_id = ?`,
-        [appointment_status, cancel_reason, appointmentId],
-      );
-    } else {
-      await pool.execute(
-        `UPDATE appointments
-         SET appointment_status = ?, cancel_reason = NULL
-         WHERE appointment_id = ?`,
-        [appointment_status, appointmentId],
-      );
-    }
-
-    return res.json({ ok: true, message: "Appointment status updated." });
-  } catch (err) {
-    console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
-  }
-});
+/* ---------------- DASHBOARD ---------------- */
 
 app.get("/api/dashboard/stats", async (req, res) => {
   if (!req.session.userId)
@@ -948,6 +892,7 @@ app.get("/api/admin/users/search", async (req, res) => {
   }
 });
 
+/* ---------------- PATIENTS (admin search) ---------------- */
 app.get("/api/patients/search", async (req, res) => {
   if (!req.session.userId)
     return res.status(401).json({ error: "Not logged in" });
@@ -1028,6 +973,7 @@ app.get("/api/patients/:id", async (req, res) => {
   }
 });
 
+/* ---------------- DENTISTS (admin search) ---------------- */
 app.get("/api/dentists/search", async (req, res) => {
   if (!req.session.userId)
     return res.status(401).json({ error: "Not logged in" });
@@ -1051,6 +997,8 @@ app.get("/api/dentists/search", async (req, res) => {
     return res.status(500).json({ error: err?.message || "Database error" });
   }
 });
+
+/* ---------------- DENTAL RECORDS (admin only) ---------------- */
 
 const TOOTH_STATUSES = ["healthy", "treated", "needs_attention", "extracted"];
 
@@ -1473,6 +1421,7 @@ app.post("/api/admin/users/promote", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Invalid role." });
     }
 
+    // Fetch only from users table — do not require a patients record.
     const [users] = await pool.execute(
       `SELECT user_id, first_name, last_name, email, contact_number, role
          FROM users
@@ -1486,6 +1435,7 @@ app.post("/api/admin/users/promote", async (req, res) => {
 
     const user = users[0];
 
+    // allow optional demographic overrides from the request body; otherwise use safe defaults
     const date_of_birth = requireField(body, "date_of_birth") || "1970-01-01";
     const gender = requireField(body, "gender") || "male";
 
@@ -1564,6 +1514,8 @@ app.post("/api/admin/users/promote", async (req, res) => {
   }
 });
 
+/* ---------------- PROTECTED PAGES ---------------- */
+
 app.get("/patientPage.html", (req, res) => {
   if (!req.session.userId) return res.redirect("/login.html");
   if (req.session.role !== "patient") return res.redirect("/adminPage.html");
@@ -1612,6 +1564,7 @@ app.get("/js/adminPage.js", (req, res) => {
   res.sendFile(path.join(__dirname, "protected", "js", "adminPage.js"));
 });
 
+// DB init <---------------------------------------------------------------
 async function ensureDbInitialized() {
   const bootstrapConn = await mysql.createConnection({
     host: DB_HOST,
@@ -1820,20 +1773,6 @@ async function ensureDbInitialized() {
         FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
         ON DELETE CASCADE
     ) ENGINE=InnoDB;
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS treatment (
-      treatment_id INT AUTO_INCREMENT PRIMARY KEY,
-      dental_record_id INT,
-      treatment_name VARCHAR(150) NOT NULL,
-      description TEXT,
-      default_duration INT COMMENT 'minutes',
-      default_price DECIMAL(10,2) NOT NULL,
-      category VARCHAR(100),
-      is_active BOOLEAN DEFAULT TRUE,
-      FOREIGN KEY (dental_record_id) REFERENCES dental_records(dental_record_id)
-) ENGINE=InnoDB;
   `);
 
   console.log("Database initialized successfully.");

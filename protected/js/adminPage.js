@@ -108,8 +108,11 @@ function apptFormatTime(timeStr) {
   return `${hour}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
+let adminCalendarBaseDate = new Date();
+
 function renderAdminCalendar(appointments, container, baseDate) {
   if (!baseDate) baseDate = new Date();
+  adminCalendarBaseDate = baseDate;
   const yr = baseDate.getFullYear();
   const mo = baseDate.getMonth();
 
@@ -192,9 +195,14 @@ function renderAdminCalendar(appointments, container, baseDate) {
         const status = (appt.appointment_status || "").toLowerCase();
 
         const tag = document.createElement("div");
-        tag.style.cssText = `font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:${STATUS_COLORS[status] || "#f0f0f0"};border-radius:3px;padding:2px 5px;`;
-        tag.title = `${name} — ${time} — ${status}`;
+        tag.style.cssText = `font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:${STATUS_COLORS[status] || "#f0f0f0"};border-radius:3px;padding:2px 5px;cursor:pointer;`;
+        tag.title = `${name} — ${time} — ${status} (click to update status)`;
         tag.textContent = `${name} — ${time}`;
+        tag.addEventListener("click", () => {
+          openApptStatusModal(appt, () =>
+            loadAdminAppointments(adminCalendarBaseDate),
+          );
+        });
         list.appendChild(tag);
       });
 
@@ -216,7 +224,7 @@ function renderAdminCalendar(appointments, container, baseDate) {
   }
 }
 
-async function loadAdminAppointments() {
+async function loadAdminAppointments(baseDate) {
   const container = document.getElementById("admin-appointments-calendar");
   if (!container) return;
   container.textContent = "Loading appointments…";
@@ -227,10 +235,115 @@ async function loadAdminAppointments() {
       throw new Error(err.error || "Failed to load appointments");
     }
     const appointments = await res.json();
-    renderAdminCalendar(appointments, container, new Date());
+    renderAdminCalendar(appointments, container, baseDate || new Date());
   } catch (err) {
     container.innerHTML = `<p style="color:red;">Error: ${err.message}</p>`;
   }
+}
+
+function closeApptStatusModal() {
+  const el = document.getElementById("appt-status-modal-overlay");
+  if (el) el.remove();
+}
+
+function openApptStatusModal(appt, onSaved) {
+  closeApptStatusModal();
+
+  const name = `${appt.first_name || ""} ${appt.last_name || ""}`.trim();
+  const dateLabel = appt.appointment_date
+    ? new Date(`${appt.appointment_date}T00:00:00`).toLocaleDateString()
+    : "";
+  const timeLabel = apptFormatTime(appt.appointment_time);
+  const currentStatus = (appt.appointment_status || "").toLowerCase();
+  const statuses = ["scheduled", "confirmed", "completed", "cancelled"];
+
+  const overlay = document.createElement("div");
+  overlay.id = "appt-status-modal-overlay";
+  overlay.style.cssText =
+    "position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:1000;";
+
+  const box = document.createElement("div");
+  box.style.cssText =
+    "background:#fff;border-radius:10px;padding:20px;width:320px;max-width:90vw;box-shadow:0 10px 30px rgba(0,0,0,0.2);";
+  box.innerHTML = `
+    <h3 style="margin-top:0;margin-bottom:4px;">Update Appointment</h3>
+    <p style="margin:0 0 12px;font-size:13px;color:#555;">${escapeHtml(name)} — ${escapeHtml(dateLabel)} ${escapeHtml(timeLabel)}</p>
+    <div class="field">
+      <label for="appt-status-select">Status</label>
+      <select id="appt-status-select">
+        ${statuses
+          .map(
+            (s) =>
+              `<option value="${s}" ${s === currentStatus ? "selected" : ""}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`,
+          )
+          .join("")}
+      </select>
+    </div>
+    <div class="field" id="appt-cancel-reason-field" style="display:none;margin-top:10px;">
+      <label for="appt-cancel-reason">Cancellation Reason</label>
+      <textarea id="appt-cancel-reason" rows="3" placeholder="Reason for cancelling"></textarea>
+    </div>
+    <div id="appt-status-error" style="color:red;font-size:13px;margin-top:8px;"></div>
+    <div class="actions" style="margin-top:14px;">
+      <button type="button" id="appt-status-save">Save</button>
+      <button type="button" id="appt-status-close">Close</button>
+    </div>
+  `;
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  const select = box.querySelector("#appt-status-select");
+  const reasonField = box.querySelector("#appt-cancel-reason-field");
+  const reasonInput = box.querySelector("#appt-cancel-reason");
+  const errorEl = box.querySelector("#appt-status-error");
+
+  function syncReasonField() {
+    reasonField.style.display = select.value === "cancelled" ? "block" : "none";
+  }
+  syncReasonField();
+  select.addEventListener("change", syncReasonField);
+
+  box
+    .querySelector("#appt-status-close")
+    .addEventListener("click", closeApptStatusModal);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closeApptStatusModal();
+  });
+
+  box.querySelector("#appt-status-save").addEventListener("click", async () => {
+    errorEl.textContent = "";
+    const newStatus = select.value;
+    const payload = { status: newStatus };
+
+    if (newStatus === "cancelled") {
+      const reason = reasonInput.value.trim();
+      if (!reason) {
+        errorEl.textContent = "Please provide a cancellation reason.";
+        return;
+      }
+      payload.cancel_reason = reason;
+    }
+
+    try {
+      const res = await fetch(
+        `/api/appointments/${appt.appointment_id}/status`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || "Failed to update appointment status.");
+      }
+      closeApptStatusModal();
+      if (typeof onSaved === "function") onSaved();
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
+  });
 }
 
 (function () {
@@ -247,15 +360,15 @@ function getFormPayload(form, extra = {}) {
   const payload = { ...extra };
   const fd = new FormData(form);
   for (const [k, v] of fd.entries()) {
-    payload[k] = typeof v === 'string' ? v.trim() : v;
+    payload[k] = typeof v === "string" ? v.trim() : v;
   }
   return payload;
 }
 
 function genderNormalize(gender) {
-  const g = (gender || '').toLowerCase();
-  if (g === 'male' || g === 'm') return 'male';
-  if (g === 'female' || g === 'f') return 'female';
+  const g = (gender || "").toLowerCase();
+  if (g === "male" || g === "m") return "male";
+  if (g === "female" || g === "f") return "female";
   return gender;
 }
 
@@ -268,22 +381,23 @@ function debounce(fn, delay = 250) {
 }
 
 function formatUserLabel(user) {
-  if (!user) return '';
-  const name = `${user.first_name || ''} ${user.last_name || ''}`.trim();
-  return `${name} · ${user.email || user.username || ''}`;
+  if (!user) return "";
+  const name = `${user.first_name || ""} ${user.last_name || ""}`.trim();
+  return `${name} · ${user.email || user.username || ""}`;
 }
 
 function clearUserSuggestions() {
-  const list = document.getElementById('user-suggestions');
-  if (list) list.innerHTML = '';
+  const list = document.getElementById("user-suggestions");
+  if (list) list.innerHTML = "";
 }
 
 function renderUserSuggestions(users) {
-  const list = document.getElementById('user-suggestions');
+  const list = document.getElementById("user-suggestions");
   if (!list) return;
 
   if (!users || !users.length) {
-    list.innerHTML = '<div style="padding:10px;color:#666;">No users found.</div>';
+    list.innerHTML =
+      '<div style="padding:10px;color:#666;">No users found.</div>';
     return;
   }
 
@@ -292,76 +406,94 @@ function renderUserSuggestions(users) {
       (user) =>
         `<div class="suggestion-item" data-user-id="${user.user_id}">${formatUserLabel(user)}</div>`,
     )
-    .join('');
+    .join("");
 }
 
 function renderPatientSuggestions(patients) {
-  const list = document.getElementById('patient-suggestions');
+  const list = document.getElementById("patient-suggestions");
   if (!list) return;
   if (!patients || !patients.length) {
-    list.innerHTML = '<div style="padding:10px;color:#666;">No patients found.</div>';
+    list.innerHTML =
+      '<div style="padding:10px;color:#666;">No patients found.</div>';
     return;
   }
   list.innerHTML = patients
-    .map((p) => `<div class="suggestion-item" data-patient-id="${p.patient_id}">${p.first_name} ${p.last_name} · ${p.email || p.contact_number || ''}</div>`)
-    .join('');
+    .map(
+      (p) =>
+        `<div class="suggestion-item" data-patient-id="${p.patient_id}">${p.first_name} ${p.last_name} · ${p.email || p.contact_number || ""}</div>`,
+    )
+    .join("");
 }
 
 function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function renderPatientInfoSuggestions(patients) {
-  const list = document.getElementById('patient-info-suggestions');
+  const list = document.getElementById("patient-info-suggestions");
   if (!list) return;
   if (!patients || !patients.length) {
-    list.innerHTML = '<div style="padding:10px;color:#666;">No patients found.</div>';
+    list.innerHTML =
+      '<div style="padding:10px;color:#666;">No patients found.</div>';
     return;
   }
   list.innerHTML = patients
-    .map((p) => `<div class="suggestion-item" data-patient-id="${p.patient_id}">${p.first_name} ${p.last_name} · ${p.email || p.contact_number || ''}</div>`)
-    .join('');
+    .map(
+      (p) =>
+        `<div class="suggestion-item" data-patient-id="${p.patient_id}">${p.first_name} ${p.last_name} · ${p.email || p.contact_number || ""}</div>`,
+    )
+    .join("");
 }
 
 function clearPatientInfoSuggestions() {
-  const list = document.getElementById('patient-info-suggestions');
-  if (list) list.innerHTML = '';
+  const list = document.getElementById("patient-info-suggestions");
+  if (list) list.innerHTML = "";
 }
 
 function clearPatientInfoDetails() {
-  const box = document.getElementById('patient-info-details');
-  if (box) box.innerHTML = '';
+  const box = document.getElementById("patient-info-details");
+  if (box) box.innerHTML = "";
 }
 
 function renderPatientInfoDetails(patient) {
-  const box = document.getElementById('patient-info-details');
+  const box = document.getElementById("patient-info-details");
   if (!box) return;
 
   if (!patient) {
-    box.innerHTML = '<p style="color:#666;">Select a patient to view details.</p>';
+    box.innerHTML =
+      '<p style="color:#666;">Select a patient to view details.</p>';
     return;
   }
 
-  const fullName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
-  const dob = patient.date_of_birth ? new Date(patient.date_of_birth).toLocaleDateString() : 'Not provided';
-  const address = [patient.house_no, patient.street, patient.barangay, patient.city, patient.zip_code]
+  const fullName =
+    `${patient.first_name || ""} ${patient.last_name || ""}`.trim();
+  const dob = patient.date_of_birth
+    ? new Date(patient.date_of_birth).toLocaleDateString()
+    : "Not provided";
+  const address = [
+    patient.house_no,
+    patient.street,
+    patient.barangay,
+    patient.city,
+    patient.zip_code,
+  ]
     .filter(Boolean)
-    .join(', ');
+    .join(", ");
 
   box.innerHTML = `
     <div style="border:1px solid #ddd;border-radius:8px;padding:16px;background:#fafafa;">
-      <h3 style="margin-top:0;">${escapeHtml(fullName || 'Patient')}</h3>
-      <p><strong>Email:</strong> ${escapeHtml(patient.email || 'Not provided')}</p>
-      <p><strong>Contact:</strong> ${escapeHtml(patient.contact_number || 'Not provided')}</p>
+      <h3 style="margin-top:0;">${escapeHtml(fullName || "Patient")}</h3>
+      <p><strong>Email:</strong> ${escapeHtml(patient.email || "Not provided")}</p>
+      <p><strong>Contact:</strong> ${escapeHtml(patient.contact_number || "Not provided")}</p>
       <p><strong>Date of birth:</strong> ${escapeHtml(dob)}</p>
-      <p><strong>Gender:</strong> ${escapeHtml(patient.gender || 'Not provided')}</p>
-      <p><strong>Blood type:</strong> ${escapeHtml(patient.blood_type || 'Not provided')}</p>
-      <p><strong>Address:</strong> ${escapeHtml(address || 'Not provided')}</p>
+      <p><strong>Gender:</strong> ${escapeHtml(patient.gender || "Not provided")}</p>
+      <p><strong>Blood type:</strong> ${escapeHtml(patient.blood_type || "Not provided")}</p>
+      <p><strong>Address:</strong> ${escapeHtml(address || "Not provided")}</p>
       <p><strong>Appointments:</strong> ${escapeHtml(String(patient.appointment_count || 0))}</p>
     </div>
   `;
@@ -371,34 +503,38 @@ function renderDentistSuggestions(dentists, target) {
   const list = document.getElementById(target);
   if (!list) return;
   if (!dentists || !dentists.length) {
-    list.innerHTML = '<div style="padding:10px;color:#666;">No dentists found.</div>';
+    list.innerHTML =
+      '<div style="padding:10px;color:#666;">No dentists found.</div>';
     return;
   }
   list.innerHTML = dentists
-    .map((d) => `<div class="suggestion-item" data-dentist-id="${d.dentist_id}">${d.first_name} ${d.last_name} · ${d.specialization || d.email || ''}</div>`)
-    .join('');
+    .map(
+      (d) =>
+        `<div class="suggestion-item" data-dentist-id="${d.dentist_id}">${d.first_name} ${d.last_name} · ${d.specialization || d.email || ""}</div>`,
+    )
+    .join("");
 }
 
 function updateSelectedUserCard(user) {
-  const card = document.getElementById('selected-user-card');
-  const nameEl = document.getElementById('selected-user-name');
-  const emailEl = document.getElementById('selected-user-email');
-  const roleEl = document.getElementById('selected-user-role');
+  const card = document.getElementById("selected-user-card");
+  const nameEl = document.getElementById("selected-user-name");
+  const emailEl = document.getElementById("selected-user-email");
+  const roleEl = document.getElementById("selected-user-role");
 
   if (!card || !nameEl || !emailEl || !roleEl) return;
 
   if (!user) {
-    card.style.display = 'none';
-    nameEl.textContent = '';
-    emailEl.textContent = '';
-    roleEl.textContent = '';
+    card.style.display = "none";
+    nameEl.textContent = "";
+    emailEl.textContent = "";
+    roleEl.textContent = "";
     return;
   }
 
-  card.style.display = 'block';
+  card.style.display = "block";
   nameEl.textContent = `${user.first_name} ${user.last_name}`.trim();
-  emailEl.textContent = user.email || '';
-  roleEl.textContent = `Current role: ${user.role || 'patient'}`;
+  emailEl.textContent = user.email || "";
+  roleEl.textContent = `Current role: ${user.role || "patient"}`;
 }
 
 async function searchUsers(query) {
@@ -408,8 +544,10 @@ async function searchUsers(query) {
   }
 
   try {
-    const res = await fetch(`/api/admin/users/search?q=${encodeURIComponent(query)}`);
-    if (!res.ok) throw new Error('Search failed');
+    const res = await fetch(
+      `/api/admin/users/search?q=${encodeURIComponent(query)}`,
+    );
+    if (!res.ok) throw new Error("Search failed");
     const users = await res.json();
     renderUserSuggestions(users);
   } catch (err) {
@@ -420,12 +558,15 @@ async function searchUsers(query) {
 
 async function searchPatients(query) {
   if (!query || query.trim().length < 1) {
-    const list = document.getElementById('patient-suggestions'); if (list) list.innerHTML = '';
+    const list = document.getElementById("patient-suggestions");
+    if (list) list.innerHTML = "";
     return;
   }
   try {
-    const res = await fetch(`/api/patients/search?q=${encodeURIComponent(query)}`);
-    if (!res.ok) throw new Error('Search failed');
+    const res = await fetch(
+      `/api/patients/search?q=${encodeURIComponent(query)}`,
+    );
+    if (!res.ok) throw new Error("Search failed");
     const items = await res.json();
     renderPatientSuggestions(items);
   } catch (err) {
@@ -442,8 +583,10 @@ async function searchPatientInfo(query) {
   }
 
   try {
-    const res = await fetch(`/api/patients/search?q=${encodeURIComponent(query)}`);
-    if (!res.ok) throw new Error('Search failed');
+    const res = await fetch(
+      `/api/patients/search?q=${encodeURIComponent(query)}`,
+    );
+    if (!res.ok) throw new Error("Search failed");
     const items = await res.json();
     renderPatientInfoSuggestions(items);
   } catch (err) {
@@ -460,7 +603,7 @@ async function loadPatientInfoDetails(patientId) {
 
   try {
     const res = await fetch(`/api/patients/${encodeURIComponent(patientId)}`);
-    if (!res.ok) throw new Error('Unable to load patient details');
+    if (!res.ok) throw new Error("Unable to load patient details");
     const data = await res.json();
     renderPatientInfoDetails(data?.patient || null);
   } catch (err) {
@@ -471,12 +614,15 @@ async function loadPatientInfoDetails(patientId) {
 
 async function searchDentists(query, targetListId) {
   if (!query || query.trim().length < 1) {
-    const list = document.getElementById(targetListId); if (list) list.innerHTML = '';
+    const list = document.getElementById(targetListId);
+    if (list) list.innerHTML = "";
     return;
   }
   try {
-    const res = await fetch(`/api/dentists/search?q=${encodeURIComponent(query)}`);
-    if (!res.ok) throw new Error('Search failed');
+    const res = await fetch(
+      `/api/dentists/search?q=${encodeURIComponent(query)}`,
+    );
+    if (!res.ok) throw new Error("Search failed");
     const items = await res.json();
     renderDentistSuggestions(items, targetListId);
   } catch (err) {
@@ -486,59 +632,59 @@ async function searchDentists(query, targetListId) {
 }
 
 function showRoleSpecificFields() {
-  const role = document.getElementById('promote-role')?.value;
-  const doctorExtra = document.getElementById('doctor-extra');
-  const staffExtra = document.getElementById('staff-extra');
-  const extraWrapper = document.getElementById('role-extra-fields');
+  const role = document.getElementById("promote-role")?.value;
+  const doctorExtra = document.getElementById("doctor-extra");
+  const staffExtra = document.getElementById("staff-extra");
+  const extraWrapper = document.getElementById("role-extra-fields");
 
   if (!extraWrapper) return;
 
-  if (role === 'doctor') {
-    extraWrapper.style.display = 'block';
-    if (doctorExtra) doctorExtra.style.display = 'block';
-    if (staffExtra) staffExtra.style.display = 'none';
-  } else if (role === 'staff') {
-    extraWrapper.style.display = 'block';
-    if (doctorExtra) doctorExtra.style.display = 'none';
-    if (staffExtra) staffExtra.style.display = 'block';
+  if (role === "doctor") {
+    extraWrapper.style.display = "block";
+    if (doctorExtra) doctorExtra.style.display = "block";
+    if (staffExtra) staffExtra.style.display = "none";
+  } else if (role === "staff") {
+    extraWrapper.style.display = "block";
+    if (doctorExtra) doctorExtra.style.display = "none";
+    if (staffExtra) staffExtra.style.display = "block";
   } else {
-    extraWrapper.style.display = 'none';
-    if (doctorExtra) doctorExtra.style.display = 'none';
-    if (staffExtra) staffExtra.style.display = 'none';
+    extraWrapper.style.display = "none";
+    if (doctorExtra) doctorExtra.style.display = "none";
+    if (staffExtra) staffExtra.style.display = "none";
   }
 }
 
 async function promoteSelectedUser() {
-  const userId = document.getElementById('selected-user-id')?.value;
-  const role = document.getElementById('promote-role')?.value;
-  const resultBox = document.getElementById('promote-result');
-  const submitBtn = document.getElementById('promote-user-button');
+  const userId = document.getElementById("selected-user-id")?.value;
+  const role = document.getElementById("promote-role")?.value;
+  const resultBox = document.getElementById("promote-result");
+  const submitBtn = document.getElementById("promote-user-button");
 
   if (submitBtn) submitBtn.disabled = true;
-  showResult(resultBox, 'Promoting user...');
+  showResult(resultBox, "Promoting user...");
 
   try {
     if (!userId || !role) {
-      throw new Error('Please select a user and role before promoting.');
+      throw new Error("Please select a user and role before promoting.");
     }
 
     const payload = {
       user_id: Number(userId),
       role,
-      hire_date: document.getElementById('promote_hire_date')?.value,
-      specialization: document.getElementById('specialization')?.value,
-      license_number: document.getElementById('license_number')?.value,
-      shift_schedule: document.getElementById('shift_schedule')?.value,
+      hire_date: document.getElementById("promote_hire_date")?.value,
+      specialization: document.getElementById("specialization")?.value,
+      license_number: document.getElementById("license_number")?.value,
+      shift_schedule: document.getElementById("shift_schedule")?.value,
     };
 
-    const res = await fetch('/api/admin/users/promote', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch("/api/admin/users/promote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
-      throw new Error(data.error || 'Failed to promote user.');
+      throw new Error(data.error || "Failed to promote user.");
     }
 
     showResult(
@@ -546,33 +692,36 @@ async function promoteSelectedUser() {
       `<h3>User promoted successfully!</h3><p>New ${data.role} profile created: ID ${data.doctor_id || data.staff_id}.</p>`,
     );
     loadDoctorStaffSummaries();
-    document.getElementById('user-search').value = '';
-    document.getElementById('selected-user-id').value = '';
+    document.getElementById("user-search").value = "";
+    document.getElementById("selected-user-id").value = "";
     updateSelectedUserCard(null);
     clearUserSuggestions();
-    document.getElementById('promote-role').value = '';
+    document.getElementById("promote-role").value = "";
     showRoleSpecificFields();
   } catch (err) {
-    showResult(resultBox, `<h3 style="color:red;">Error</h3><p>${err?.message || 'Unknown error'}</p>`);
+    showResult(
+      resultBox,
+      `<h3 style="color:red;">Error</h3><p>${err?.message || "Unknown error"}</p>`,
+    );
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }
 }
 
 async function loadDoctorStaffSummaries() {
-  const doctorCount = document.getElementById('doctor-summary-count');
-  const staffCount = document.getElementById('staff-summary-count');
-  const doctorList = document.getElementById('doctor-summary-list');
-  const staffList = document.getElementById('staff-summary-list');
+  const doctorCount = document.getElementById("doctor-summary-count");
+  const staffCount = document.getElementById("staff-summary-count");
+  const doctorList = document.getElementById("doctor-summary-list");
+  const staffList = document.getElementById("staff-summary-list");
 
-  if (doctorCount) doctorCount.textContent = '...';
-  if (staffCount) staffCount.textContent = '...';
-  if (doctorList) doctorList.innerHTML = 'Loading...';
-  if (staffList) staffList.innerHTML = 'Loading...';
+  if (doctorCount) doctorCount.textContent = "...";
+  if (staffCount) staffCount.textContent = "...";
+  if (doctorList) doctorList.innerHTML = "Loading...";
+  if (staffList) staffList.innerHTML = "Loading...";
 
   try {
-    const res = await fetch('/api/admin/users/summary');
-    if (!res.ok) throw new Error('Failed to load summaries');
+    const res = await fetch("/api/admin/users/summary");
+    if (!res.ok) throw new Error("Failed to load summaries");
     const data = await res.json();
 
     if (doctorCount) doctorCount.textContent = String(data.total_doctors ?? 0);
@@ -580,48 +729,57 @@ async function loadDoctorStaffSummaries() {
     if (doctorList)
       doctorList.innerHTML =
         data.doctors?.length > 0
-          ? data.doctors.map((item) => `<div>${item.name} — ${item.specialization}</div>`).join('')
+          ? data.doctors
+              .map((item) => `<div>${item.name} — ${item.specialization}</div>`)
+              .join("")
           : '<div style="color:#666;">No doctors yet.</div>';
     if (staffList)
       staffList.innerHTML =
         data.staff?.length > 0
-          ? data.staff.map((item) => `<div>${item.name} — ${item.shift_schedule}</div>`).join('')
+          ? data.staff
+              .map((item) => `<div>${item.name} — ${item.shift_schedule}</div>`)
+              .join("")
           : '<div style="color:#666;">No staff yet.</div>';
   } catch (err) {
     console.error(err);
-    if (doctorCount) doctorCount.textContent = '0';
-    if (staffCount) staffCount.textContent = '0';
-    if (doctorList) doctorList.innerHTML = '<div style="color:red;">Unable to load doctor summary.</div>';
-    if (staffList) staffList.innerHTML = '<div style="color:red;">Unable to load staff summary.</div>';
+    if (doctorCount) doctorCount.textContent = "0";
+    if (staffCount) staffCount.textContent = "0";
+    if (doctorList)
+      doctorList.innerHTML =
+        '<div style="color:red;">Unable to load doctor summary.</div>';
+    if (staffList)
+      staffList.innerHTML =
+        '<div style="color:red;">Unable to load staff summary.</div>';
   }
 }
 
 function bindUserSuggestionClicks(event) {
-  const item = event.target.closest('.suggestion-item');
+  const item = event.target.closest(".suggestion-item");
   if (!item) return;
 
   const userId = item.dataset.userId;
-  const query = item.textContent || '';
+  const query = item.textContent || "";
   const userText = query.trim();
-  const [namePart, emailPart] = userText.split('·').map((part) => part.trim());
+  const [namePart, emailPart] = userText.split("·").map((part) => part.trim());
 
-  document.getElementById('selected-user-id').value = userId;
-  document.getElementById('user-search').value = namePart || emailPart || userText;
+  document.getElementById("selected-user-id").value = userId;
+  document.getElementById("user-search").value =
+    namePart || emailPart || userText;
   updateSelectedUserCard({
     first_name: namePart,
-    last_name: '',
-    email: emailPart || '',
-    role: 'patient',
+    last_name: "",
+    email: emailPart || "",
+    role: "patient",
   });
   clearUserSuggestions();
 }
 
 function submitAppointmentForm(event) {
-  if (typeof handleAddSubmit === 'function') {
+  if (typeof handleAddSubmit === "function") {
     return handleAddSubmit(event);
   }
   event.preventDefault();
-  console.error('handleAddSubmit is not defined');
+  console.error("handleAddSubmit is not defined");
 }
 
 function showResult(el, html) {
@@ -631,7 +789,7 @@ function showResult(el, html) {
 
 async function submitBlockDatesForm(e) {
   e.preventDefault();
-  const resultBox = document.getElementById('block-sched-result');
+  const resultBox = document.getElementById("block-sched-result");
   showResult(
     resultBox,
     `<h3>Not implemented yet</h3><p>Block dates/leave scheduling is not available yet.</p>`,
@@ -641,45 +799,48 @@ async function submitBlockDatesForm(e) {
 async function submitClinicHoursForm(e) {
   e.preventDefault();
   const form = e.target;
-  const resultBox = document.getElementById('clinic-hours-result');
+  const resultBox = document.getElementById("clinic-hours-result");
   const submitBtn = form.querySelector('button[type="submit"]');
   if (submitBtn) submitBtn.disabled = true;
-  showResult(resultBox, 'Saving clinic hours...');
+  showResult(resultBox, "Saving clinic hours...");
 
   try {
     const payload = getFormPayload(form);
     const missing = [];
-    if (!payload.dentist_id) missing.push('dentist_id');
-    if (!payload.day_of_week) missing.push('day_of_week');
-    if (!payload.start_time) missing.push('start_time');
-    if (!payload.end_time) missing.push('end_time');
+    if (!payload.dentist_id) missing.push("dentist_id");
+    if (!payload.day_of_week) missing.push("day_of_week");
+    if (!payload.start_time) missing.push("start_time");
+    if (!payload.end_time) missing.push("end_time");
 
     if (missing.length) {
-      throw new Error(`Missing field(s): ${missing.join(', ')}`);
+      throw new Error(`Missing field(s): ${missing.join(", ")}`);
     }
 
     if (payload.start_time >= payload.end_time) {
-      throw new Error('Start time must be before end time.');
+      throw new Error("Start time must be before end time.");
     }
 
-    const res = await fetch('/api/dentist-schedule', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch("/api/dentist-schedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
-      throw new Error(data.error || 'Failed to save clinic hours');
+      throw new Error(data.error || "Failed to save clinic hours");
     }
 
     showResult(
       resultBox,
-      `<h3>Clinic hours saved successfully!</h3><p>Schedule ID: ${data.schedule_id ?? 'N/A'}</p>`,
+      `<h3>Clinic hours saved successfully!</h3><p>Schedule ID: ${data.schedule_id ?? "N/A"}</p>`,
     );
     form.reset();
   } catch (err) {
-    showResult(resultBox, `<h3 style="color:red;">Error</h3><p>${err?.message || 'Unknown error'}</p>`);
+    showResult(
+      resultBox,
+      `<h3 style="color:red;">Error</h3><p>${err?.message || "Unknown error"}</p>`,
+    );
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }
@@ -689,35 +850,41 @@ async function submitStaffForm(e) {
   e.preventDefault();
 
   const form = e.target;
-  const resultBox = document.getElementById('staff-form-result');
+  const resultBox = document.getElementById("staff-form-result");
   const submitBtn = form.querySelector('button[type="submit"]');
   if (submitBtn) submitBtn.disabled = true;
-  showResult(resultBox, 'Saving staff...');
+  showResult(resultBox, "Saving staff...");
 
   try {
     const payload = getFormPayload(form);
     payload.gender = genderNormalize(payload.gender);
 
-    const res = await fetch('/api/staff', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const res = await fetch("/api/staff", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
-      throw new Error(data.error || 'Failed to add staff');
+      throw new Error(data.error || "Failed to add staff");
     }
 
-    showResult(resultBox, `
+    showResult(
+      resultBox,
+      `
       <h3>Staff saved successfully!</h3>
       <p>Staff ID: ${data.staff_id}</p>
-      <p>Inserted Staff User ID: ${data.user_id ?? 'N/A'}</p>
-    `);
+      <p>Inserted Staff User ID: ${data.user_id ?? "N/A"}</p>
+    `,
+    );
 
     form.reset();
   } catch (err) {
-    showResult(resultBox, `<h3 style="color:red;">Database Error</h3><p>${err?.message ? String(err.message) : 'Unknown error'}</p>`);
+    showResult(
+      resultBox,
+      `<h3 style="color:red;">Database Error</h3><p>${err?.message ? String(err.message) : "Unknown error"}</p>`,
+    );
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }
@@ -727,198 +894,723 @@ async function submitDoctorForm(e) {
   e.preventDefault();
 
   const form = e.target;
-  const resultBox = document.getElementById('doctor-form-result');
+  const resultBox = document.getElementById("doctor-form-result");
   const submitBtn = form.querySelector('button[type="submit"]');
   if (submitBtn) submitBtn.disabled = true;
-  showResult(resultBox, 'Saving doctor...');
+  showResult(resultBox, "Saving doctor...");
 
   try {
     const payload = getFormPayload(form);
     payload.gender = genderNormalize(payload.gender);
-    payload.employment_status = 'Active';
-    payload.license_number = payload.license_number === '' ? null : Number(payload.license_number);
+    payload.employment_status = "Active";
+    payload.license_number =
+      payload.license_number === "" ? null : Number(payload.license_number);
 
-
-    const res = await fetch('/api/doctors', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const res = await fetch("/api/doctors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
-      throw new Error(data.error || 'Failed to add doctor');
+      throw new Error(data.error || "Failed to add doctor");
     }
 
-    showResult(resultBox, `
+    showResult(
+      resultBox,
+      `
       <h3>Doctor saved successfully!</h3>
-      <p>Doctor ID: ${data.doctor_id ?? 'N/A'}</p>
-    `);
+      <p>Doctor ID: ${data.doctor_id ?? "N/A"}</p>
+    `,
+    );
 
     form.reset();
   } catch (err) {
-    showResult(resultBox, `<h3 style="color:red;">Database Error</h3><p>${err?.message ? String(err.message) : 'Unknown error'}</p>`);
+    showResult(
+      resultBox,
+      `<h3 style="color:red;">Database Error</h3><p>${err?.message ? String(err.message) : "Unknown error"}</p>`,
+    );
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const btnDoctor = document.getElementById('btn-show-doctor');
-  const btnStaff = document.getElementById('btn-show-staff');
-  const doctorCard = document.getElementById('doctor-form-card');
-  const staffCard = document.getElementById('staff-form-card');
-  const btnAppointment = document.getElementById('btn-show-add');
-  const btnBlockDates = document.getElementById('btn-show-view');
-  const btnClinicHours = document.getElementById('btn-show-cancel');
-  const appointmentCard = document.getElementById('appointment-form-card');
-  const blockDatesCard = document.getElementById('block-dates-form-card');
-  const clinicHoursCard = document.getElementById('clinic-hours-form-card');
+document.addEventListener("DOMContentLoaded", () => {
+  const btnDoctor = document.getElementById("btn-show-doctor");
+  const btnStaff = document.getElementById("btn-show-staff");
+  const doctorCard = document.getElementById("doctor-form-card");
+  const staffCard = document.getElementById("staff-form-card");
+  const btnAppointment = document.getElementById("btn-show-add");
+  const btnBlockDates = document.getElementById("btn-show-view");
+  const btnClinicHours = document.getElementById("btn-show-cancel");
+  const appointmentCard = document.getElementById("appointment-form-card");
+  const blockDatesCard = document.getElementById("block-dates-form-card");
+  const clinicHoursCard = document.getElementById("clinic-hours-form-card");
 
   function showDoctorForm() {
-    if (doctorCard) doctorCard.style.display = 'block';
-    if (staffCard) staffCard.style.display = 'none';
+    if (doctorCard) doctorCard.style.display = "block";
+    if (staffCard) staffCard.style.display = "none";
   }
 
   function showStaffForm() {
-    if (doctorCard) doctorCard.style.display = 'none';
-    if (staffCard) staffCard.style.display = 'block';
+    if (doctorCard) doctorCard.style.display = "none";
+    if (staffCard) staffCard.style.display = "block";
   }
 
   function showAppointmentForm() {
-    if (appointmentCard) appointmentCard.style.display = 'block';
-    if (blockDatesCard) blockDatesCard.style.display = 'none';
-    if (clinicHoursCard) clinicHoursCard.style.display = 'none';
+    if (appointmentCard) appointmentCard.style.display = "block";
+    if (blockDatesCard) blockDatesCard.style.display = "none";
+    if (clinicHoursCard) clinicHoursCard.style.display = "none";
   }
 
   function showBlockDatesForm() {
-    if (appointmentCard) appointmentCard.style.display = 'none';
-    if (blockDatesCard) blockDatesCard.style.display = 'block';
-    if (clinicHoursCard) clinicHoursCard.style.display = 'none';
+    if (appointmentCard) appointmentCard.style.display = "none";
+    if (blockDatesCard) blockDatesCard.style.display = "block";
+    if (clinicHoursCard) clinicHoursCard.style.display = "none";
   }
 
   function showClinicHoursForm() {
-    if (appointmentCard) appointmentCard.style.display = 'none';
-    if (blockDatesCard) blockDatesCard.style.display = 'none';
-    if (clinicHoursCard) clinicHoursCard.style.display = 'block';
+    if (appointmentCard) appointmentCard.style.display = "none";
+    if (blockDatesCard) blockDatesCard.style.display = "none";
+    if (clinicHoursCard) clinicHoursCard.style.display = "block";
   }
 
-  if (btnDoctor) btnDoctor.addEventListener('click', showDoctorForm);
-  if (btnStaff) btnStaff.addEventListener('click', showStaffForm);
-  if (btnAppointment) btnAppointment.addEventListener('click', showAppointmentForm);
-  if (btnBlockDates) btnBlockDates.addEventListener('click', showBlockDatesForm);
-  if (btnClinicHours) btnClinicHours.addEventListener('click', showClinicHoursForm);
+  if (btnDoctor) btnDoctor.addEventListener("click", showDoctorForm);
+  if (btnStaff) btnStaff.addEventListener("click", showStaffForm);
+  if (btnAppointment)
+    btnAppointment.addEventListener("click", showAppointmentForm);
+  if (btnBlockDates)
+    btnBlockDates.addEventListener("click", showBlockDatesForm);
+  if (btnClinicHours)
+    btnClinicHours.addEventListener("click", showClinicHoursForm);
 
-  const doctorForm = document.getElementById('doctor-form');
-  const staffForm = document.getElementById('staff-form');
-  const appointmentForm = document.getElementById('add-appointment-form');
-  const blockDatesForm = document.getElementById('block-sched-form');
-  const clinicHoursForm = document.getElementById('clinic-hours-form');
+  const doctorForm = document.getElementById("doctor-form");
+  const staffForm = document.getElementById("staff-form");
+  const appointmentForm = document.getElementById("add-appointment-form");
+  const blockDatesForm = document.getElementById("block-sched-form");
+  const clinicHoursForm = document.getElementById("clinic-hours-form");
 
-  if (doctorForm) doctorForm.addEventListener('submit', submitDoctorForm);
-  if (staffForm) staffForm.addEventListener('submit', submitStaffForm);
+  if (doctorForm) doctorForm.addEventListener("submit", submitDoctorForm);
+  if (staffForm) staffForm.addEventListener("submit", submitStaffForm);
   if (appointmentForm)
     appointmentForm.addEventListener(
-      'submit',
-      typeof handleAddSubmit === 'function' ? handleAddSubmit : submitAppointmentForm,
+      "submit",
+      typeof handleAddSubmit === "function"
+        ? handleAddSubmit
+        : submitAppointmentForm,
     );
-  if (blockDatesForm) blockDatesForm.addEventListener('submit', submitBlockDatesForm);
-  if (clinicHoursForm) clinicHoursForm.addEventListener('submit', submitClinicHoursForm);
+  if (blockDatesForm)
+    blockDatesForm.addEventListener("submit", submitBlockDatesForm);
+  if (clinicHoursForm)
+    clinicHoursForm.addEventListener("submit", submitClinicHoursForm);
 
-  const userSearchInput = document.getElementById('user-search');
-  const userSuggestions = document.getElementById('user-suggestions');
-  const promoteRole = document.getElementById('promote-role');
-  const promoteButton = document.getElementById('promote-user-button');
+  const userSearchInput = document.getElementById("user-search");
+  const userSuggestions = document.getElementById("user-suggestions");
+  const promoteRole = document.getElementById("promote-role");
+  const promoteButton = document.getElementById("promote-user-button");
 
   if (userSearchInput) {
     userSearchInput.addEventListener(
-      'input',
-      debounce((event) => searchUsers(event.target.value || ''), 250),
+      "input",
+      debounce((event) => searchUsers(event.target.value || ""), 250),
     );
   }
 
-  const patientSearch = document.getElementById('patient-search');
-  const patientSuggestions = document.getElementById('patient-suggestions');
+  const patientSearch = document.getElementById("patient-search");
+  const patientSuggestions = document.getElementById("patient-suggestions");
   if (patientSearch) {
-    patientSearch.addEventListener('input', debounce((e) => searchPatients(e.target.value || ''), 200));
+    patientSearch.addEventListener(
+      "input",
+      debounce((e) => searchPatients(e.target.value || ""), 200),
+    );
   }
   if (patientSuggestions) {
-    patientSuggestions.addEventListener('click', (e) => {
-      const el = e.target.closest('.suggestion-item'); if (!el) return;
-      const id = el.dataset.patientId; const label = el.textContent || '';
-      document.getElementById('patient_id').value = id;
-      document.getElementById('patient-search').value = label.split('·')[0].trim();
-      patientSuggestions.innerHTML = '';
+    patientSuggestions.addEventListener("click", (e) => {
+      const el = e.target.closest(".suggestion-item");
+      if (!el) return;
+      const id = el.dataset.patientId;
+      const label = el.textContent || "";
+      document.getElementById("patient_id").value = id;
+      document.getElementById("patient-search").value = label
+        .split("·")[0]
+        .trim();
+      patientSuggestions.innerHTML = "";
     });
   }
 
-  const patientInfoSearch = document.getElementById('patient-info-search');
-  const patientInfoSuggestions = document.getElementById('patient-info-suggestions');
+  const patientInfoSearch = document.getElementById("patient-info-search");
+  const patientInfoSuggestions = document.getElementById(
+    "patient-info-suggestions",
+  );
   if (patientInfoSearch) {
-    patientInfoSearch.addEventListener('input', debounce((e) => searchPatientInfo(e.target.value || ''), 200));
+    patientInfoSearch.addEventListener(
+      "input",
+      debounce((e) => searchPatientInfo(e.target.value || ""), 200),
+    );
   }
   if (patientInfoSuggestions) {
-    patientInfoSuggestions.addEventListener('click', async (e) => {
-      const el = e.target.closest('.suggestion-item'); if (!el) return;
+    patientInfoSuggestions.addEventListener("click", async (e) => {
+      const el = e.target.closest(".suggestion-item");
+      if (!el) return;
       const id = el.dataset.patientId;
-      const label = el.textContent || '';
-      if (patientInfoSearch) patientInfoSearch.value = label.split('·')[0].trim();
-      patientInfoSuggestions.innerHTML = '';
+      const label = el.textContent || "";
+      if (patientInfoSearch)
+        patientInfoSearch.value = label.split("·")[0].trim();
+      patientInfoSuggestions.innerHTML = "";
       await loadPatientInfoDetails(id);
     });
   }
 
-  const clinicDentistSearch = document.getElementById('clinic-dentist-search');
-  const clinicDentistSuggestions = document.getElementById('clinic-dentist-suggestions');
+  const clinicDentistSearch = document.getElementById("clinic-dentist-search");
+  const clinicDentistSuggestions = document.getElementById(
+    "clinic-dentist-suggestions",
+  );
   if (clinicDentistSearch) {
-    clinicDentistSearch.addEventListener('input', debounce((e) => searchDentists(e.target.value || '', 'clinic-dentist-suggestions'), 200));
+    clinicDentistSearch.addEventListener(
+      "input",
+      debounce(
+        (e) =>
+          searchDentists(e.target.value || "", "clinic-dentist-suggestions"),
+        200,
+      ),
+    );
   }
   if (clinicDentistSuggestions) {
-    clinicDentistSuggestions.addEventListener('click', (e) => {
-      const el = e.target.closest('.suggestion-item'); if (!el) return;
-      const id = el.dataset.dentistId; const label = el.textContent || '';
-      document.getElementById('clinic_dentist_id').value = id;
-      document.getElementById('clinic-dentist-search').value = label.split('·')[0].trim();
-      clinicDentistSuggestions.innerHTML = '';
+    clinicDentistSuggestions.addEventListener("click", (e) => {
+      const el = e.target.closest(".suggestion-item");
+      if (!el) return;
+      const id = el.dataset.dentistId;
+      const label = el.textContent || "";
+      document.getElementById("clinic_dentist_id").value = id;
+      document.getElementById("clinic-dentist-search").value = label
+        .split("·")[0]
+        .trim();
+      clinicDentistSuggestions.innerHTML = "";
     });
   }
 
-  const blockDentistSearch = document.getElementById('block-dentist-search');
-  const blockDentistSuggestions = document.getElementById('block-dentist-suggestions');
+  const blockDentistSearch = document.getElementById("block-dentist-search");
+  const blockDentistSuggestions = document.getElementById(
+    "block-dentist-suggestions",
+  );
   if (blockDentistSearch) {
-    blockDentistSearch.addEventListener('input', debounce((e) => searchDentists(e.target.value || '', 'block-dentist-suggestions'), 200));
+    blockDentistSearch.addEventListener(
+      "input",
+      debounce(
+        (e) =>
+          searchDentists(e.target.value || "", "block-dentist-suggestions"),
+        200,
+      ),
+    );
   }
   if (blockDentistSuggestions) {
-    blockDentistSuggestions.addEventListener('click', (e) => {
-      const el = e.target.closest('.suggestion-item'); if (!el) return;
-      const id = el.dataset.dentistId; const label = el.textContent || '';
-      document.getElementById('block_dentist_id').value = id;
-      document.getElementById('block-dentist-search').value = label.split('·')[0].trim();
-      blockDentistSuggestions.innerHTML = '';
+    blockDentistSuggestions.addEventListener("click", (e) => {
+      const el = e.target.closest(".suggestion-item");
+      if (!el) return;
+      const id = el.dataset.dentistId;
+      const label = el.textContent || "";
+      document.getElementById("block_dentist_id").value = id;
+      document.getElementById("block-dentist-search").value = label
+        .split("·")[0]
+        .trim();
+      blockDentistSuggestions.innerHTML = "";
     });
   }
 
   if (userSuggestions) {
-    userSuggestions.addEventListener('click', bindUserSuggestionClicks);
+    userSuggestions.addEventListener("click", bindUserSuggestionClicks);
   }
 
   if (promoteRole) {
-    promoteRole.addEventListener('change', showRoleSpecificFields);
+    promoteRole.addEventListener("change", showRoleSpecificFields);
   }
 
   if (promoteButton) {
-    promoteButton.addEventListener('click', promoteSelectedUser);
+    promoteButton.addEventListener("click", promoteSelectedUser);
   }
 
-  document.addEventListener('click', (event) => {
-    if (!event.target.closest('#user-search') && !event.target.closest('#user-suggestions')) {
+  document.addEventListener("click", (event) => {
+    if (
+      !event.target.closest("#user-search") &&
+      !event.target.closest("#user-suggestions")
+    ) {
       clearUserSuggestions();
     }
-    if (!event.target.closest('#patient-info-search') && !event.target.closest('#patient-info-suggestions')) {
+    if (
+      !event.target.closest("#patient-info-search") &&
+      !event.target.closest("#patient-info-suggestions")
+    ) {
       clearPatientInfoSuggestions();
+    }
+    if (
+      !event.target.closest("#dental-patient-search") &&
+      !event.target.closest("#dental-patient-suggestions")
+    ) {
+      clearDentalPatientSuggestions();
+    }
+    if (
+      !event.target.closest("#treatment-dentist-search") &&
+      !event.target.closest("#treatment-dentist-suggestions")
+    ) {
+      const list = document.getElementById("treatment-dentist-suggestions");
+      if (list) list.innerHTML = "";
     }
   });
 
   loadDoctorStaffSummaries();
+  initDentalRecordsTab();
 });
 
+const TOOTH_STATUS_ORDER = [
+  "healthy",
+  "treated",
+  "needs_attention",
+  "extracted",
+];
+
+const TOOTH_STATUS_LABELS = {
+  healthy: "Healthy",
+  treated: "Treated",
+  needs_attention: "Needs Attention",
+  extracted: "Extracted",
+};
+
+const TOOTH_STATUS_STYLES = {
+  healthy: { bg: "#ffffff", border: "#ccc", color: "#333" },
+  treated: { bg: "#c8e6c9", border: "#4caf50", color: "#256029" },
+  needs_attention: { bg: "#ffe0b2", border: "#fb8c00", color: "#8a4b00" },
+  extracted: { bg: "#ffcdd2", border: "#e53935", color: "#8e0000" },
+};
+
+let dentalCurrentPatientId = null;
+
+function clearDentalPatientSuggestions() {
+  const list = document.getElementById("dental-patient-suggestions");
+  if (list) list.innerHTML = "";
+}
+
+function renderDentalPatientSuggestions(patients) {
+  const list = document.getElementById("dental-patient-suggestions");
+  if (!list) return;
+  if (!patients || !patients.length) {
+    list.innerHTML =
+      '<div style="padding:10px;color:#666;">No patients found.</div>';
+    return;
+  }
+  list.innerHTML = patients
+    .map(
+      (p) =>
+        `<div class="suggestion-item" data-patient-id="${p.patient_id}">${escapeHtml(p.first_name)} ${escapeHtml(p.last_name)} · ${escapeHtml(p.email || p.contact_number || "")}</div>`,
+    )
+    .join("");
+}
+
+async function searchDentalPatients(query) {
+  const q = (query || "").trim();
+  if (!q) {
+    clearDentalPatientSuggestions();
+    return;
+  }
+  try {
+    const res = await fetch(`/api/patients/search?q=${encodeURIComponent(q)}`);
+    if (!res.ok) throw new Error("Search failed");
+    const items = await res.json();
+    renderDentalPatientSuggestions(items);
+  } catch (err) {
+    console.error(err);
+    renderDentalPatientSuggestions([]);
+  }
+}
+
+function toothBox(num, status) {
+  const style = TOOTH_STATUS_STYLES[status] || TOOTH_STATUS_STYLES.healthy;
+  return `
+    <div class="tooth-box" data-tooth="${num}" data-status="${status}"
+      title="Tooth ${num} — ${TOOTH_STATUS_LABELS[status] || "Healthy"} (click to change)"
+      style="
+        width:42px;
+        text-align:center;
+        padding:6px 2px;
+        border:2px solid ${style.border};
+        background:${style.bg};
+        color:${style.color};
+        border-radius:6px;
+        cursor:pointer;
+        font-size:11px;
+        user-select:none;
+      ">
+      <div style="font-weight:bold;">${num}</div>
+    </div>`;
+}
+
+function renderToothChart(container, toothChart) {
+  if (!container) return;
+
+  const upperRow = [];
+  for (let i = 1; i <= 16; i++) {
+    upperRow.push(toothBox(i, toothChart[i] || "healthy"));
+  }
+  const lowerRow = [];
+  for (let i = 17; i <= 32; i++) {
+    lowerRow.push(toothBox(i, toothChart[i] || "healthy"));
+  }
+
+  container.innerHTML = `
+    <div style="text-align:center;font-size:12px;color:#666;letter-spacing:0.05em;margin-bottom:8px;">UPPER ARCH</div>
+    <div style="display:flex;justify-content:center;flex-wrap:wrap;gap:6px;">${upperRow.join("")}</div>
+    <div style="display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin-top:12px;">${lowerRow.join("")}</div>
+    <div style="text-align:center;font-size:12px;color:#666;letter-spacing:0.05em;margin-top:8px;">LOWER ARCH</div>
+  `;
+
+  container.querySelectorAll(".tooth-box").forEach((box) => {
+    box.addEventListener("click", () => handleToothClick(box));
+  });
+}
+
+async function handleToothClick(box) {
+  if (!dentalCurrentPatientId) return;
+
+  const toothNum = box.dataset.tooth;
+  const current = box.dataset.status || "healthy";
+  const nextIndex =
+    (TOOTH_STATUS_ORDER.indexOf(current) + 1) % TOOTH_STATUS_ORDER.length;
+  const next = TOOTH_STATUS_ORDER[nextIndex];
+
+  const style = TOOTH_STATUS_STYLES[next];
+  box.dataset.status = next;
+  box.style.borderColor = style.border;
+  box.style.background = style.bg;
+  box.style.color = style.color;
+  box.title = `Tooth ${toothNum} — ${TOOTH_STATUS_LABELS[next]} (click to change)`;
+
+  try {
+    const res = await fetch("/api/tooth-chart", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        patient_id: dentalCurrentPatientId,
+        tooth_number: toothNum,
+        condition_status: next,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || "Failed to update tooth status");
+    }
+  } catch (err) {
+    console.error(err);
+    const revertStyle = TOOTH_STATUS_STYLES[current];
+    box.dataset.status = current;
+    box.style.borderColor = revertStyle.border;
+    box.style.background = revertStyle.bg;
+    box.style.color = revertStyle.color;
+    box.title = `Tooth ${toothNum} — ${TOOTH_STATUS_LABELS[current]} (click to change)`;
+    alert("Could not save tooth status. Please try again.");
+  }
+}
+
+function renderToothChartLegend(container) {
+  if (!container) return;
+  container.innerHTML = TOOTH_STATUS_ORDER.map((status) => {
+    const style = TOOTH_STATUS_STYLES[status];
+    return `
+      <span style="display:inline-flex;align-items:center;gap:6px;">
+        <span style="display:inline-block;width:12px;height:12px;border:2px solid ${style.border};background:${style.bg};border-radius:2px;"></span>
+        ${TOOTH_STATUS_LABELS[status]}
+      </span>`;
+  }).join("");
+}
+
+function formatDentalDate(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function renderTreatmentsTable(treatments) {
+  const tbody = document.getElementById("treatments-body");
+  if (!tbody) return;
+  if (!treatments || !treatments.length) {
+    tbody.innerHTML = "<tr><td colspan='6'>No treatments recorded.</td></tr>";
+    return;
+  }
+  tbody.innerHTML = treatments
+    .map(
+      (t) => `
+      <tr>
+        <td>${escapeHtml(formatDentalDate(t.date))}</td>
+        <td>${escapeHtml(t.procedure)}</td>
+        <td>${escapeHtml(t.teeth)}</td>
+        <td>${escapeHtml(t.doctor)}</td>
+        <td>${escapeHtml(t.notes)}</td>
+        <td><button type="button" disabled>Edit</button></td>
+      </tr>`,
+    )
+    .join("");
+}
+
+function renderVitalsTable(vitals) {
+  const tbody = document.getElementById("vitals-body");
+  if (!tbody) return;
+  if (!vitals || !vitals.length) {
+    tbody.innerHTML = "<tr><td colspan='5'>No vitals recorded.</td></tr>";
+    return;
+  }
+  tbody.innerHTML = vitals
+    .map(
+      (v) => `
+      <tr>
+        <td>${escapeHtml(formatDentalDate(v.date))}</td>
+        <td>${escapeHtml(v.bp)}</td>
+        <td>${escapeHtml(v.pulse)}</td>
+        <td>${escapeHtml(v.temp)}</td>
+        <td>${escapeHtml(v.weight)}</td>
+      </tr>`,
+    )
+    .join("");
+}
+
+function renderHistory(history) {
+  const h = history || {};
+  document.getElementById("history-allergies").textContent = h.allergies || "—";
+  document.getElementById("history-medications").textContent =
+    h.medications || "—";
+  document.getElementById("history-medical").textContent = h.medical || "—";
+  document.getElementById("history-dental").textContent = h.dental || "—";
+  document.getElementById("history-blood-type").textContent =
+    h.blood_type || "—";
+  document.getElementById("history-emergency").textContent =
+    h.emergency_contact || "—";
+}
+
+function showDentalSubtab(name) {
+  document.querySelectorAll(".dental-subtab-content").forEach((el) => {
+    el.style.display = "none";
+  });
+  const active = document.getElementById("dental-subtab-" + name);
+  if (active) active.style.display = "block";
+
+  document.querySelectorAll(".dental-subtab-btn").forEach((btn) => {
+    const isActive = btn.dataset.subtab === name;
+    btn.style.fontWeight = isActive ? "bold" : "normal";
+    btn.style.textDecoration = isActive ? "underline" : "none";
+  });
+}
+
+async function loadDentalPatientRecord(patientId) {
+  const card = document.getElementById("dental-record-card");
+  if (!patientId || !card) return;
+
+  try {
+    const res = await fetch(
+      `/api/dental-records/patient/${encodeURIComponent(patientId)}`,
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || "Failed to load dental record");
+    }
+
+    dentalCurrentPatientId = data.patient.patient_id;
+    card.style.display = "block";
+
+    document.getElementById("dental-patient-name").textContent =
+      data.patient.name;
+    document.getElementById("dental-patient-meta").textContent =
+      `P-${String(data.patient.patient_id).padStart(3, "0")} | ${data.patient.blood_type} | ${formatDentalDate(data.patient.date_of_birth)} | ${data.patient.status.charAt(0).toUpperCase() + data.patient.status.slice(1)}`;
+
+    renderToothChart(
+      document.getElementById("tooth-chart-container"),
+      data.tooth_chart || {},
+    );
+    renderToothChartLegend(document.getElementById("tooth-chart-legend"));
+    renderTreatmentsTable(data.treatments);
+    renderVitalsTable(data.vitals);
+    renderHistory(data.history);
+
+    showDentalSubtab("tooth-chart");
+
+    document.getElementById("add-treatment-card").style.display = "none";
+    document.getElementById("record-vitals-card").style.display = "none";
+  } catch (err) {
+    console.error(err);
+    alert(err.message || "Failed to load patient dental record.");
+  }
+}
+
+function initDentalRecordsTab() {
+  const searchInput = document.getElementById("dental-patient-search");
+  const suggestions = document.getElementById("dental-patient-suggestions");
+
+  if (searchInput) {
+    searchInput.addEventListener(
+      "input",
+      debounce((e) => searchDentalPatients(e.target.value || ""), 200),
+    );
+  }
+
+  if (suggestions) {
+    suggestions.addEventListener("click", (e) => {
+      const item = e.target.closest(".suggestion-item");
+      if (!item) return;
+      const patientId = item.dataset.patientId;
+      loadDentalPatientRecord(patientId);
+      clearDentalPatientSuggestions();
+      if (searchInput) searchInput.value = "";
+    });
+  }
+
+  document.querySelectorAll(".dental-subtab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => showDentalSubtab(btn.dataset.subtab));
+  });
+
+  const btnAddTreatment = document.getElementById("btn-add-treatment");
+  const addTreatmentCard = document.getElementById("add-treatment-card");
+  const addTreatmentForm = document.getElementById("add-treatment-form");
+  const btnCancelAddTreatment = document.getElementById(
+    "btn-cancel-add-treatment",
+  );
+  const treatmentDentistSearch = document.getElementById(
+    "treatment-dentist-search",
+  );
+  const treatmentDentistSuggestions = document.getElementById(
+    "treatment-dentist-suggestions",
+  );
+
+  if (btnAddTreatment) {
+    btnAddTreatment.addEventListener("click", () => {
+      if (!dentalCurrentPatientId) return;
+      showDentalSubtab("treatments");
+      addTreatmentCard.style.display = "block";
+    });
+  }
+
+  if (btnCancelAddTreatment) {
+    btnCancelAddTreatment.addEventListener("click", () => {
+      addTreatmentCard.style.display = "none";
+      addTreatmentForm.reset();
+      document.getElementById("treatment_dentist_id").value = "";
+    });
+  }
+
+  if (treatmentDentistSearch) {
+    treatmentDentistSearch.addEventListener(
+      "input",
+      debounce(
+        (e) =>
+          searchDentists(e.target.value || "", "treatment-dentist-suggestions"),
+        200,
+      ),
+    );
+  }
+
+  if (treatmentDentistSuggestions) {
+    treatmentDentistSuggestions.addEventListener("click", (e) => {
+      const el = e.target.closest(".suggestion-item");
+      if (!el) return;
+      const id = el.dataset.dentistId;
+      const label = el.textContent || "";
+      document.getElementById("treatment_dentist_id").value = id;
+      treatmentDentistSearch.value = label.split("·")[0].trim();
+      treatmentDentistSuggestions.innerHTML = "";
+    });
+  }
+
+  if (addTreatmentForm) {
+    addTreatmentForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!dentalCurrentPatientId) return;
+
+      const payload = {
+        patient_id: dentalCurrentPatientId,
+        dentist_id:
+          document.getElementById("treatment_dentist_id").value || null,
+        visit_date: document.getElementById("treatment_date").value,
+        procedure: document.getElementById("treatment_procedure").value,
+        teeth_involved: document.getElementById("treatment_teeth").value,
+        notes: document.getElementById("treatment_notes").value,
+      };
+
+      try {
+        const res = await fetch("/api/dental-records", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || "Failed to save treatment");
+        }
+
+        await loadDentalPatientRecord(dentalCurrentPatientId);
+        addTreatmentForm.reset();
+        document.getElementById("treatment_dentist_id").value = "";
+        addTreatmentCard.style.display = "none";
+      } catch (err) {
+        console.error(err);
+        alert(err.message || "Failed to save treatment.");
+      }
+    });
+  }
+
+  const btnRecordVitals = document.getElementById("btn-record-vitals");
+  const recordVitalsCard = document.getElementById("record-vitals-card");
+  const recordVitalsForm = document.getElementById("record-vitals-form");
+  const btnCancelRecordVitals = document.getElementById(
+    "btn-cancel-record-vitals",
+  );
+
+  if (btnRecordVitals) {
+    btnRecordVitals.addEventListener("click", () => {
+      if (!dentalCurrentPatientId) return;
+      recordVitalsCard.style.display = "block";
+    });
+  }
+
+  if (btnCancelRecordVitals) {
+    btnCancelRecordVitals.addEventListener("click", () => {
+      recordVitalsCard.style.display = "none";
+      recordVitalsForm.reset();
+    });
+  }
+
+  if (recordVitalsForm) {
+    recordVitalsForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!dentalCurrentPatientId) return;
+
+      const payload = {
+        patient_id: dentalCurrentPatientId,
+        date_recorded: document.getElementById("vitals_date").value,
+        blood_pressure: document.getElementById("vitals_bp").value,
+        heart_rate: document.getElementById("vitals_pulse").value,
+        temperature: document.getElementById("vitals_temp").value,
+        weight: document.getElementById("vitals_weight").value,
+      };
+
+      try {
+        const res = await fetch("/api/patient-vitals", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || "Failed to save vitals");
+        }
+
+        await loadDentalPatientRecord(dentalCurrentPatientId);
+        recordVitalsForm.reset();
+        recordVitalsCard.style.display = "none";
+      } catch (err) {
+        console.error(err);
+        alert(err.message || "Failed to save vitals.");
+      }
+    });
+  }
+}
