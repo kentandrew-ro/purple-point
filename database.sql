@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS treatment (
   default_duration INT COMMENT 'minutes',
   default_price DECIMAL(10,2) NOT NULL,
   category VARCHAR(100),
+  teeth_involved VARCHAR(255),
   is_active BOOLEAN DEFAULT TRUE,
   FOREIGN KEY (dental_record_id) REFERENCES dental_records(dental_record_id)
 );

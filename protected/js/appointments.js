@@ -127,14 +127,16 @@ function renderCancelAppointmentList(appointments, container) {
 
   container.innerHTML = rows;
 
-  container.querySelectorAll("button[data-appointment-id]").forEach((button) => {
-    button.addEventListener("click", () => {
-      openCancelModal(
-        button.getAttribute("data-appointment-id"),
-        button.getAttribute("data-appointment-label"),
-      );
+  container
+    .querySelectorAll("button[data-appointment-id]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        openCancelModal(
+          button.getAttribute("data-appointment-id"),
+          button.getAttribute("data-appointment-label"),
+        );
+      });
     });
-  });
 }
 
 let selectedAppointmentId = null;
@@ -235,7 +237,7 @@ function renderAppointmentsCalendar(
   for (let day = 1; day <= daysInMonth; day++) {
     const cell = document.createElement("div");
     cell.style.cssText =
-      "min-height:92px;border:1px solid #eee;padding:6px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;";
+      "min-height:92px;border:1px solid #eee;padding:6px;box-sizing:border-box;display:flex;flex-direction:column;overflow:auto;";
 
     const dayNum = document.createElement("div");
     dayNum.style.cssText = "font-weight:800;font-size:12px;margin-bottom:4px;";
@@ -284,6 +286,39 @@ async function loadAppointments() {
   return response.json();
 }
 
+async function loadDentists() {
+  const response = await fetch("/api/dentists");
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Failed to load dentists");
+  }
+  return response.json();
+}
+
+async function populateDentistDropdown() {
+  try {
+    const dentists = await loadDentists();
+    const select = document.querySelector("select[name='dentist_id']");
+    if (select) {
+      const currentValue = select.value;
+      select.innerHTML = '<option value="">Select Doctor (Optional)</option>';
+      dentists.forEach((dentist) => {
+        const option = document.createElement("option");
+        option.value = dentist.dentist_id;
+        const name = `${dentist.first_name} ${dentist.last_name}`;
+        const specialty = dentist.specialization
+          ? ` (${dentist.specialization})`
+          : "";
+        option.textContent = `${name}${specialty}`;
+        select.appendChild(option);
+      });
+      select.value = currentValue;
+    }
+  } catch (err) {
+    console.error("Failed to load dentists:", err);
+  }
+}
+
 async function handleAddSubmit(event) {
   event.preventDefault();
 
@@ -304,6 +339,9 @@ async function handleAddSubmit(event) {
     appointment_type: form.appointment_type.value,
     status: form.appointment_status.value,
     reason: form.reason_for_visit.value.trim() || null,
+    dentist_id: form.dentist_id.value
+      ? parseInt(form.dentist_id.value, 10)
+      : null,
   };
 
   if (isAdminField) {
@@ -368,7 +406,8 @@ async function handleCancelSubmit(event) {
   resultBox.innerHTML = "";
 
   if (!appointmentId) {
-    resultBox.innerHTML = '<p style="color:red;">Please select an appointment first.</p>';
+    resultBox.innerHTML =
+      '<p style="color:red;">Please select an appointment first.</p>';
     return;
   }
 
@@ -432,9 +471,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   } catch {}
 
-  document
-    .getElementById("btn-add")
-    ?.addEventListener("click", () => showView("view-add"));
+  populateDentistDropdown();
+
+  document.getElementById("btn-add")?.addEventListener("click", () => {
+    showView("view-add");
+    populateDentistDropdown();
+  });
 
   document.getElementById("btn-view")?.addEventListener("click", async () => {
     showView("view-view");

@@ -1184,6 +1184,8 @@ const TOOTH_STATUS_STYLES = {
 };
 
 let dentalCurrentPatientId = null;
+let dentalTreatmentsById = new Map();
+let dentalEditingTreatmentId = null;
 
 function clearDentalPatientSuggestions() {
   const list = document.getElementById("dental-patient-suggestions");
@@ -1322,6 +1324,15 @@ function renderToothChartLegend(container) {
   }).join("");
 }
 
+function toDateInputValue(dateStr) {
+  if (!dateStr) return "";
+  const s = String(dateStr);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
 function formatDentalDate(dateStr) {
   if (!dateStr) return "";
   const d = new Date(dateStr);
@@ -1337,7 +1348,7 @@ function renderTreatmentsTable(treatments) {
   const tbody = document.getElementById("treatments-body");
   if (!tbody) return;
   if (!treatments || !treatments.length) {
-    tbody.innerHTML = "<tr><td colspan='6'>No treatments recorded.</td></tr>";
+    tbody.innerHTML = "<tr><td colspan='8'>No treatments recorded.</td></tr>";
     return;
   }
   tbody.innerHTML = treatments
@@ -1346,13 +1357,31 @@ function renderTreatmentsTable(treatments) {
       <tr>
         <td>${escapeHtml(formatDentalDate(t.date))}</td>
         <td>${escapeHtml(t.procedure)}</td>
+        <td>${escapeHtml(t.category || "—")}</td>
+        <td>${
+          t.price !== null && t.price !== undefined && t.price !== ""
+            ? escapeHtml(Number(t.price).toFixed(2))
+            : "—"
+        }</td>
         <td>${escapeHtml(t.teeth)}</td>
         <td>${escapeHtml(t.doctor)}</td>
         <td>${escapeHtml(t.notes)}</td>
-        <td><button type="button" disabled>Edit</button></td>
+        <td>
+          <button
+            type="button"
+            class="btn-edit-treatment"
+            data-treatment-id="${escapeHtml(t.treatment_id)}"
+          >
+            Edit
+          </button>
+        </td>
       </tr>`,
     )
     .join("");
+
+  dentalTreatmentsById = new Map(
+    treatments.map((t) => [String(t.treatment_id), t]),
+  );
 }
 
 function renderVitalsTable(vitals) {
@@ -1435,12 +1464,27 @@ async function loadDentalPatientRecord(patientId) {
 
     showDentalSubtab("tooth-chart");
 
+    resetTreatmentFormToAddMode();
     document.getElementById("add-treatment-card").style.display = "none";
     document.getElementById("record-vitals-card").style.display = "none";
   } catch (err) {
     console.error(err);
     alert(err.message || "Failed to load patient dental record.");
   }
+}
+
+function resetTreatmentFormToAddMode() {
+  dentalEditingTreatmentId = null;
+  const form = document.getElementById("add-treatment-form");
+  if (form) form.reset();
+  const idField = document.getElementById("treatment_id");
+  if (idField) idField.value = "";
+  const dentistIdField = document.getElementById("treatment_dentist_id");
+  if (dentistIdField) dentistIdField.value = "";
+  const title = document.getElementById("treatment-form-title");
+  if (title) title.textContent = "Add Treatment";
+  const submitBtn = document.getElementById("treatment-form-submit-btn");
+  if (submitBtn) submitBtn.textContent = "Save Treatment";
 }
 
 function initDentalRecordsTab() {
@@ -1472,6 +1516,11 @@ function initDentalRecordsTab() {
   const btnAddTreatment = document.getElementById("btn-add-treatment");
   const addTreatmentCard = document.getElementById("add-treatment-card");
   const addTreatmentForm = document.getElementById("add-treatment-form");
+  const treatmentFormTitle = document.getElementById("treatment-form-title");
+  const treatmentFormSubmitBtn = document.getElementById(
+    "treatment-form-submit-btn",
+  );
+  const treatmentsBody = document.getElementById("treatments-body");
   const btnCancelAddTreatment = document.getElementById(
     "btn-cancel-add-treatment",
   );
@@ -1482,19 +1531,62 @@ function initDentalRecordsTab() {
     "treatment-dentist-suggestions",
   );
 
+  function enterEditTreatmentMode(treatment) {
+    dentalEditingTreatmentId = treatment.treatment_id;
+    showDentalSubtab("treatments");
+    addTreatmentCard.style.display = "block";
+
+    document.getElementById("treatment_id").value = treatment.treatment_id;
+    document.getElementById("treatment_date").value = toDateInputValue(
+      treatment.date,
+    );
+    document.getElementById("treatment_procedure").value =
+      treatment.procedure || "";
+    document.getElementById("treatment_teeth").value = treatment.teeth || "";
+    document.getElementById("treatment_notes").value = treatment.notes || "";
+    document.getElementById("treatment_dentist_id").value =
+      treatment.dentist_id || "";
+    document.getElementById("treatment_price").value =
+      treatment.price !== null && treatment.price !== undefined
+        ? treatment.price
+        : "";
+    document.getElementById("treatment_duration").value =
+      treatment.duration !== null && treatment.duration !== undefined
+        ? treatment.duration
+        : "";
+    document.getElementById("treatment_category").value =
+      treatment.category || "";
+    treatmentDentistSearch.value = treatment.doctor || "";
+    treatmentDentistSuggestions.innerHTML = "";
+
+    if (treatmentFormTitle) treatmentFormTitle.textContent = "Edit Treatment";
+    if (treatmentFormSubmitBtn)
+      treatmentFormSubmitBtn.textContent = "Update Treatment";
+  }
+
   if (btnAddTreatment) {
     btnAddTreatment.addEventListener("click", () => {
       if (!dentalCurrentPatientId) return;
+      resetTreatmentFormToAddMode();
       showDentalSubtab("treatments");
       addTreatmentCard.style.display = "block";
+    });
+  }
+
+  if (treatmentsBody) {
+    treatmentsBody.addEventListener("click", (e) => {
+      const btn = e.target.closest(".btn-edit-treatment");
+      if (!btn) return;
+      const treatment = dentalTreatmentsById.get(btn.dataset.treatmentId);
+      if (!treatment) return;
+      enterEditTreatmentMode(treatment);
     });
   }
 
   if (btnCancelAddTreatment) {
     btnCancelAddTreatment.addEventListener("click", () => {
       addTreatmentCard.style.display = "none";
-      addTreatmentForm.reset();
-      document.getElementById("treatment_dentist_id").value = "";
+      resetTreatmentFormToAddMode();
     });
   }
 
@@ -1526,6 +1618,8 @@ function initDentalRecordsTab() {
       e.preventDefault();
       if (!dentalCurrentPatientId) return;
 
+      const isEditing = Boolean(dentalEditingTreatmentId);
+
       const payload = {
         patient_id: dentalCurrentPatientId,
         dentist_id:
@@ -1534,26 +1628,42 @@ function initDentalRecordsTab() {
         procedure: document.getElementById("treatment_procedure").value,
         teeth_involved: document.getElementById("treatment_teeth").value,
         notes: document.getElementById("treatment_notes").value,
+        price: document.getElementById("treatment_price").value,
+        duration: document.getElementById("treatment_duration").value,
+        category: document.getElementById("treatment_category").value,
       };
 
+      const url = isEditing
+        ? `/api/dental-records/${encodeURIComponent(dentalEditingTreatmentId)}`
+        : "/api/dental-records";
+
       try {
-        const res = await fetch("/api/dental-records", {
-          method: "POST",
+        const res = await fetch(url, {
+          method: isEditing ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.ok) {
-          throw new Error(data.error || "Failed to save treatment");
+          throw new Error(
+            data.error ||
+              (isEditing
+                ? "Failed to update treatment"
+                : "Failed to save treatment"),
+          );
         }
 
         await loadDentalPatientRecord(dentalCurrentPatientId);
-        addTreatmentForm.reset();
-        document.getElementById("treatment_dentist_id").value = "";
+        resetTreatmentFormToAddMode();
         addTreatmentCard.style.display = "none";
       } catch (err) {
         console.error(err);
-        alert(err.message || "Failed to save treatment.");
+        alert(
+          err.message ||
+            (isEditing
+              ? "Failed to update treatment."
+              : "Failed to save treatment."),
+        );
       }
     });
   }

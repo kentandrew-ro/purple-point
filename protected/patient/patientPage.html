@@ -4,6 +4,77 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Patient Page</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 2rem;
+        background: #f5f3fb;
+      }
+      h1 {
+        margin-top: 0;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+        margin-top: 1rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #eee;
+      }
+      th {
+        font-size: 0.8rem;
+        color: #555;
+        text-transform: uppercase;
+      }
+      .status {
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+      .status-confirmed,
+      .status-scheduled {
+        background: #d9f2e6;
+        color: #1f8a4c;
+      }
+      .status-pending {
+        background: #fdecc8;
+        color: #a1670f;
+      }
+      .status-completed {
+        background: #dbe6ff;
+        color: #2b4fb0;
+      }
+      .status-cancelled {
+        background: #f3d9d9;
+        color: #a83232;
+      }
+      .cancel-btn {
+        background: #fff;
+        border: 1px solid #6b3fa0;
+        color: #6b3fa0;
+        padding: 6px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .cancel-btn:hover {
+        background: #6b3fa0;
+        color: #fff;
+      }
+      .cancel-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      #appointmentsEmpty {
+        padding: 1rem;
+        color: #666;
+      }
+    </style>
   </head>
   <body>
     <h1>Welcome Patient</h1>
@@ -11,6 +82,23 @@
     <a href="/appointments.html">appointments</a>
     <br /><br />
     <button onclick="signOut()">Sign Out</button>
+
+    <h2>Upcoming Appointments</h2>
+    <div id="appointmentsEmpty" style="display: none">
+      No upcoming appointments.
+    </div>
+    <table id="appointmentsTable" style="display: none">
+      <thead>
+        <tr>
+          <th>Date &amp; Time</th>
+          <th>Doctor</th>
+          <th>Reason</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="appointmentsBody"></tbody>
+    </table>
 
     <script src="/js/patientPage.js"></script>
   </body>
