@@ -11,3 +11,6 @@ atlas-database:
 
 ssh:
 	@sshpass -e ssh -p "$(SSH_PORT)" "$(SSH_USER)@$(SSH_HOST)"
+
+deploy:
+	@sshpass -e ssh -p "$(SSH_PORT)" "$(SSH_USER)@$(SSH_HOST)" 'git -C /data/users/s23102075/purplepoint.dcism.org pull'
