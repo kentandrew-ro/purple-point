@@ -1,7 +1,8 @@
 .env
-
 node_modules/
-
 server.js.bak
-
 server.js.clean.bak
+.vscode/
+team/
+.envrc
+.direnv/

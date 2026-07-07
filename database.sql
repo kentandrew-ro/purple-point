@@ -1,7 +1,4 @@
-CREATE DATABASE IF NOT EXISTS purple_point;
-USE purple_point;
-
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
     first_name VARCHAR(50) NOT NULL,
     last_name VARCHAR(50) NOT NULL,
@@ -13,7 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS patients (
+CREATE TABLE patients (
   patient_id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT UNIQUE,
   first_name VARCHAR(100) NOT NULL,
@@ -31,7 +28,7 @@ CREATE TABLE IF NOT EXISTS patients (
   FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
-CREATE TABLE IF NOT EXISTS staff (
+CREATE TABLE staff (
   staff_id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT UNIQUE,
   first_name VARCHAR(100) NOT NULL,
@@ -46,7 +43,7 @@ CREATE TABLE IF NOT EXISTS staff (
   -- FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS dentist (
+CREATE TABLE dentist (
   dentist_id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT UNIQUE,
   first_name VARCHAR(100) NOT NULL,
@@ -60,7 +57,7 @@ CREATE TABLE IF NOT EXISTS dentist (
   -- FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS dentist_schedule (
+CREATE TABLE dentist_schedule (
   schedule_id INT AUTO_INCREMENT PRIMARY KEY,
   dentist_id INT NOT NULL,
   day_of_week ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') NOT NULL,
@@ -72,7 +69,7 @@ CREATE TABLE IF NOT EXISTS dentist_schedule (
   FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id)
 );
 
-CREATE TABLE IF NOT EXISTS appointments (
+CREATE TABLE appointments (
   appointment_id INT AUTO_INCREMENT PRIMARY KEY,
   patient_id INT NOT NULL,
   dentist_id INT NOT NULL,
@@ -87,7 +84,7 @@ CREATE TABLE IF NOT EXISTS appointments (
   FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id)
 );
 
-CREATE TABLE IF NOT EXISTS dental_records (
+CREATE TABLE dental_records (
   dental_record_id INT AUTO_INCREMENT PRIMARY KEY,
   patient_id INT NOT NULL,
   appointment_id INT,
@@ -108,7 +105,7 @@ CREATE TABLE IF NOT EXISTS dental_records (
   FOREIGN KEY (recorded_by) REFERENCES staff(staff_id)
 );
 
-CREATE TABLE IF NOT EXISTS patient_history (
+CREATE TABLE patient_history (
   patient_history_id INT AUTO_INCREMENT PRIMARY KEY,
   patient_id INT NOT NULL,
   allergies TEXT,
@@ -119,7 +116,7 @@ CREATE TABLE IF NOT EXISTS patient_history (
   FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS patient_records (
+CREATE TABLE patient_records (
   patient_records_id INT AUTO_INCREMENT PRIMARY KEY,
   patient_id INT NOT NULL UNIQUE,
   date_registered DATE NOT NULL DEFAULT (CURRENT_DATE),
@@ -129,7 +126,7 @@ CREATE TABLE IF NOT EXISTS patient_records (
   FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS patient_vitals (
+CREATE TABLE patient_vitals (
   patient_vitals_id INT AUTO_INCREMENT PRIMARY KEY,
   dental_record_id INT NOT NULL,
   staff_id INT NOT NULL,
@@ -142,7 +139,7 @@ CREATE TABLE IF NOT EXISTS patient_vitals (
   FOREIGN KEY (staff_id) REFERENCES staff(staff_id)
 );
 
-CREATE TABLE IF NOT EXISTS tooth_chart (
+CREATE TABLE tooth_chart (
   tooth_chart_id INT AUTO_INCREMENT PRIMARY KEY,
   dental_record_id INT NOT NULL,
   tooth_number VARCHAR(10) NOT NULL,
@@ -152,7 +149,7 @@ CREATE TABLE IF NOT EXISTS tooth_chart (
   FOREIGN KEY (dental_record_id) REFERENCES dental_records(dental_record_id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS treatment (
+CREATE TABLE treatment (
   treatment_id INT AUTO_INCREMENT PRIMARY KEY,
   dental_record_id INT,
   treatment_name VARCHAR(150) NOT NULL,
