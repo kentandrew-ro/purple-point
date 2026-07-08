@@ -151,13 +151,45 @@ CREATE TABLE tooth_chart (
 
 CREATE TABLE treatment (
   treatment_id INT AUTO_INCREMENT PRIMARY KEY,
-  dental_record_id INT,
   treatment_name VARCHAR(150) NOT NULL,
   description TEXT,
   default_duration INT COMMENT 'minutes',
   default_price DECIMAL(10,2) NOT NULL,
   category VARCHAR(100),
+  is_active BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE patient_treatments (
+  patient_treatment_id INT AUTO_INCREMENT PRIMARY KEY,
+  dental_record_id INT NOT NULL,
+  treatment_id INT NOT NULL,
   teeth_involved VARCHAR(255),
-  is_active BOOLEAN DEFAULT TRUE,
-  FOREIGN KEY (dental_record_id) REFERENCES dental_records(dental_record_id)
+  actual_price DECIMAL(10,2) NOT NULL,
+  actual_duration INT COMMENT 'minutes',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (dental_record_id) REFERENCES dental_records(dental_record_id) ON DELETE CASCADE,
+  FOREIGN KEY (treatment_id) REFERENCES treatment(treatment_id)
+);
+
+CREATE TABLE billing (
+  billing_id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL,
+  patient_treatment_id INT NOT NULL,
+  billing_date DATE NOT NULL DEFAULT (CURRENT_DATE),
+  total_amount DECIMAL(10,2) NOT NULL,
+  billing_status ENUM('unpaid', 'partial', 'paid') NOT NULL DEFAULT 'unpaid',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+  FOREIGN KEY (patient_treatment_id) REFERENCES patient_treatments(patient_treatment_id)
+);
+
+CREATE TABLE payments (
+  payment_id INT AUTO_INCREMENT PRIMARY KEY,
+  billing_id INT NOT NULL,
+  payment_date DATE NOT NULL,
+  amount_paid DECIMAL(10,2) NOT NULL,
+  payment_method ENUM('cash', 'card', 'gcash', 'bank_transfer', 'other') NOT NULL,
+  payment_status ENUM('pending', 'completed', 'failed') NOT NULL DEFAULT 'completed',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (billing_id) REFERENCES billing(billing_id) ON DELETE CASCADE
 );

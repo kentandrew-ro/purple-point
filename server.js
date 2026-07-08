@@ -39,6 +39,10 @@ app.use(
   }),
 );
 
+app.get("/", (req, res) => {
+  res.redirect("/login.html");
+});
+
 app.post("/api/signup", async (req, res) => {
   const { firstName, lastName, username, email, password, contactNumber } =
     req.body;
@@ -1116,7 +1120,11 @@ app.get("/api/dental-records/patient/:patientId", async (req, res) => {
     }
 
     const [toothRows] = await pool.execute(
-      `SELECT tooth_number, condition_status FROM tooth_chart WHERE patient_id = ?`,
+      `SELECT tc.tooth_number, tc.condition_status
+       FROM tooth_chart tc
+       JOIN dental_records dr ON dr.dental_record_id = tc.dental_record_id
+       WHERE dr.patient_id = ?
+       ORDER BY tc.recorded_at DESC`,
       [patientId],
     );
     const tooth_chart = {};
@@ -1126,16 +1134,17 @@ app.get("/api/dental-records/patient/:patientId", async (req, res) => {
 
     const [vitalsRows] = await pool.execute(
       `SELECT
-         DATE_FORMAT(date_recorded, '%Y-%m-%d') AS date_recorded,
-         blood_pressure, heart_rate, temperature, weight
-       FROM patient_vitals
-       WHERE patient_id = ?
-       ORDER BY date_recorded DESC, patient_vitals_id DESC`,
+         DATE_FORMAT(pv.date_recorded, '%Y-%m-%d') AS date_recorded,
+         pv.blood_pressure, pv.heart_rate, pv.temperature, pv.weight
+       FROM patient_vitals pv
+       JOIN dental_records dr ON dr.dental_record_id = pv.dental_record_id
+       WHERE dr.patient_id = ?
+       ORDER BY pv.date_recorded DESC, pv.patient_vitals_id DESC`,
       [patientId],
     );
 
     const [historyRows] = await pool.execute(
-      `SELECT allergies, current_medications, medical_conditions, dental_history
+      `SELECT allergies, current_medications, medical_conditions, last_dental_visit
        FROM patient_history
        WHERE patient_id = ?`,
       [patientId],
@@ -1161,15 +1170,16 @@ app.get("/api/dental-records/patient/:patientId", async (req, res) => {
          dr.dentist_id,
          DATE_FORMAT(dr.visit_date, '%Y-%m-%d') AS visit_date,
          COALESCE(NULLIF(t.treatment_name, ''), NULLIF(dr.treatment_plan_notes, ''), dr.diagnosis) AS procedure_name,
-         dr.teeth_involved,
+         COALESCE(NULLIF(pt.teeth_involved, ''), dr.teeth_involved) AS teeth_involved,
          COALESCE(NULLIF(t.description, ''), dr.clinical_notes) AS clinical_notes,
-         t.default_price AS price,
-         t.default_duration AS duration,
+         COALESCE(pt.actual_price, t.default_price) AS price,
+         COALESCE(pt.actual_duration, t.default_duration) AS duration,
          t.category AS category,
          CONCAT(d.first_name, ' ', d.last_name) AS doctor_name
        FROM dental_records dr
        LEFT JOIN dentist d ON d.dentist_id = dr.dentist_id
-       LEFT JOIN treatment t ON t.dental_record_id = dr.dental_record_id
+       LEFT JOIN patient_treatments pt ON pt.dental_record_id = dr.dental_record_id
+       LEFT JOIN treatment t ON t.treatment_id = pt.treatment_id
        WHERE dr.patient_id = ?
        ORDER BY dr.visit_date DESC, dr.dental_record_id DESC`,
       [patientId],
@@ -1212,7 +1222,7 @@ app.get("/api/dental-records/patient/:patientId", async (req, res) => {
         allergies: historyRow.allergies || "None",
         medications: historyRow.current_medications || "None",
         medical: historyRow.medical_conditions || "None",
-        dental: historyRow.dental_history || "None",
+        dental: historyRow.last_dental_visit || "None",
         blood_type: patient.blood_type || "—",
         emergency_contact: emergencyContact || "—",
       },
@@ -1288,24 +1298,36 @@ app.put("/api/dental-records/:id", async (req, res) => {
       [dentist_id, visit_date, procedure, teeth_involved, notes, recordId],
     );
 
-    const [existingTreatment] = await pool.execute(
-      "SELECT treatment_id FROM treatment WHERE dental_record_id = ?",
+    const [existingLink] = await pool.execute(
+      "SELECT patient_treatment_id, treatment_id FROM patient_treatments WHERE dental_record_id = ?",
       [recordId],
     );
 
-    if (existingTreatment.length) {
+    if (existingLink.length) {
+      const treatmentId = existingLink[0].treatment_id;
       await pool.execute(
         `UPDATE treatment
-         SET treatment_name = ?, description = ?, default_duration = ?, default_price = ?, category = ?, teeth_involved = ?
-         WHERE dental_record_id = ?`,
-        [procedure, notes, duration, price, category, teeth_involved, recordId],
+         SET treatment_name = ?, description = ?, default_duration = ?, default_price = ?, category = ?
+         WHERE treatment_id = ?`,
+        [procedure, notes, duration, price, category, treatmentId],
+      );
+      await pool.execute(
+        `UPDATE patient_treatments
+         SET teeth_involved = ?, actual_price = ?, actual_duration = ?
+         WHERE patient_treatment_id = ?`,
+        [teeth_involved, price, duration, existingLink[0].patient_treatment_id],
       );
     } else {
+      const [newTreatment] = await pool.execute(
+        `INSERT INTO treatment (treatment_name, description, default_duration, default_price, category)
+         VALUES (?, ?, ?, ?, ?)`,
+        [procedure, notes, duration, price, category],
+      );
       await pool.execute(
-        `INSERT INTO treatment
-           (dental_record_id, treatment_name, description, default_duration, default_price, category, teeth_involved)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [recordId, procedure, notes, duration, price, category, teeth_involved],
+        `INSERT INTO patient_treatments
+           (dental_record_id, treatment_id, teeth_involved, actual_price, actual_duration)
+         VALUES (?, ?, ?, ?, ?)`,
+        [recordId, newTreatment.insertId, teeth_involved, price, duration],
       );
     }
 
@@ -1375,19 +1397,17 @@ app.post("/api/dental-records", async (req, res) => {
       [patient_id, dentist_id, visit_date, procedure, teeth_involved, notes],
     );
 
+    const [newTreatment] = await pool.execute(
+      `INSERT INTO treatment (treatment_name, description, default_duration, default_price, category)
+       VALUES (?, ?, ?, ?, ?)`,
+      [procedure, notes, duration, price, category],
+    );
+
     await pool.execute(
-      `INSERT INTO treatment
-         (dental_record_id, treatment_name, description, default_duration, default_price, category, teeth_involved)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        result.insertId,
-        procedure,
-        notes,
-        duration,
-        price,
-        category,
-        teeth_involved,
-      ],
+      `INSERT INTO patient_treatments
+         (dental_record_id, treatment_id, teeth_involved, actual_price, actual_duration)
+       VALUES (?, ?, ?, ?, ?)`,
+      [result.insertId, newTreatment.insertId, teeth_involved, price, duration],
     );
 
     let doctorName = "—";
@@ -1434,6 +1454,8 @@ app.post("/api/patient-vitals", async (req, res) => {
   try {
     const body = req.body || {};
     const patient_id = parseInt(requireField(body, "patient_id"), 10);
+    const dental_record_id_raw = requireField(body, "dental_record_id");
+    const staff_id = parseInt(requireField(body, "staff_id"), 10);
     const date_recorded = requireField(body, "date_recorded");
     const blood_pressure = requireField(body, "blood_pressure") || null;
     const heart_rate = requireField(body, "heart_rate") || null;
@@ -1443,6 +1465,7 @@ app.post("/api/patient-vitals", async (req, res) => {
     const missing = [];
     if (!patient_id) missing.push("patient_id");
     if (!date_recorded) missing.push("date_recorded");
+    if (!staff_id) missing.push("staff_id");
 
     if (missing.length) {
       return res
@@ -1458,12 +1481,35 @@ app.post("/api/patient-vitals", async (req, res) => {
       return res.status(404).json({ ok: false, error: "Patient not found." });
     }
 
+    let dental_record_id = dental_record_id_raw
+      ? parseInt(dental_record_id_raw, 10)
+      : null;
+
+    if (!dental_record_id) {
+      const [latestRecord] = await pool.execute(
+        `SELECT dental_record_id FROM dental_records
+         WHERE patient_id = ?
+         ORDER BY visit_date DESC, dental_record_id DESC
+         LIMIT 1`,
+        [patient_id],
+      );
+      if (!latestRecord.length) {
+        return res.status(400).json({
+          ok: false,
+          error:
+            "Patient has no dental record to attach vitals to. Provide dental_record_id.",
+        });
+      }
+      dental_record_id = latestRecord[0].dental_record_id;
+    }
+
     await pool.execute(
       `INSERT INTO patient_vitals
-         (patient_id, date_recorded, blood_pressure, heart_rate, temperature, weight)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+         (dental_record_id, staff_id, date_recorded, blood_pressure, heart_rate, temperature, weight)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
-        patient_id,
+        dental_record_id,
+        staff_id,
         date_recorded,
         blood_pressure,
         heart_rate,
@@ -1533,12 +1579,41 @@ app.put("/api/tooth-chart", async (req, res) => {
       return res.status(404).json({ ok: false, error: "Patient not found." });
     }
 
-    await pool.execute(
-      `INSERT INTO tooth_chart (patient_id, tooth_number, condition_status)
-       VALUES (?, ?, ?)
-       ON DUPLICATE KEY UPDATE condition_status = VALUES(condition_status)`,
-      [patient_id, tooth_number, condition_status],
+    // tooth_chart now hangs off a dental_record rather than the patient
+    // directly. Use the patient's most recent dental record.
+    const [latestRecord] = await pool.execute(
+      `SELECT dental_record_id FROM dental_records
+       WHERE patient_id = ?
+       ORDER BY visit_date DESC, dental_record_id DESC
+       LIMIT 1`,
+      [patient_id],
     );
+    if (!latestRecord.length) {
+      return res.status(400).json({
+        ok: false,
+        error: "Patient has no dental record to attach a tooth chart entry to.",
+      });
+    }
+    const dental_record_id = latestRecord[0].dental_record_id;
+
+    const [existingEntry] = await pool.execute(
+      `SELECT tooth_chart_id FROM tooth_chart
+       WHERE dental_record_id = ? AND tooth_number = ?`,
+      [dental_record_id, tooth_number],
+    );
+
+    if (existingEntry.length) {
+      await pool.execute(
+        `UPDATE tooth_chart SET condition_status = ? WHERE tooth_chart_id = ?`,
+        [condition_status, existingEntry[0].tooth_chart_id],
+      );
+    } else {
+      await pool.execute(
+        `INSERT INTO tooth_chart (dental_record_id, tooth_number, condition_status)
+         VALUES (?, ?, ?)`,
+        [dental_record_id, tooth_number, condition_status],
+      );
+    }
 
     return res.json({ ok: true, tooth_number, condition_status });
   } catch (err) {

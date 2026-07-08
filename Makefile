@@ -1,3 +1,6 @@
+all: migrate deploy
+	@echo "orca gwapo"
+
 migrate:
 	@atlas schema apply \
 		--url "mysql://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?tls=false" \
@@ -13,4 +16,4 @@ ssh:
 	@sshpass -e ssh -p "$(SSH_PORT)" "$(SSH_USER)@$(SSH_HOST)"
 
 deploy:
-	@sshpass -e ssh -p "$(SSH_PORT)" "$(SSH_USER)@$(SSH_HOST)" 'git -C /data/users/s23102075/purplepoint.dcism.org pull'
+	@sshpass -e ssh -p "$(SSH_PORT)" "$(SSH_USER)@$(SSH_HOST)" 'git -C /data/users/s23102075/purplepoint.dcism.org pull && pm2 restart all --update-env'
