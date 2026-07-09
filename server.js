@@ -1199,26 +1199,7 @@ app.get("/api/dental-records/patient/:patientId", async (req, res) => {
       [patientId],
     );
 
-    const [historyRows] = await pool.execute(
-      `SELECT allergies, current_medications, medical_conditions, last_dental_visit
-       FROM patient_history
-       WHERE patient_id = ?`,
-      [patientId],
-    );
-
-    const [contactRows] = await pool.execute(
-      `SELECT emergency_contact_name, emergency_contact_number
-       FROM patient_records
-       WHERE patient_id = ?`,
-      [patientId],
-    );
-
     const patient = patientRows[0];
-    const historyRow = historyRows[0] || {};
-    const contactRow = contactRows[0] || {};
-    const emergencyContact = contactRow.emergency_contact_name
-      ? `${contactRow.emergency_contact_name}${contactRow.emergency_contact_number ? " · " + contactRow.emergency_contact_number : ""}`
-      : null;
 
     const [treatmentRows] = await pool.execute(
       `SELECT
@@ -1275,14 +1256,6 @@ app.get("/api/dental-records/patient/:patientId", async (req, res) => {
         temp: row.temperature || "—",
         weight: row.weight || "—",
       })),
-      history: {
-        allergies: historyRow.allergies || "None",
-        medications: historyRow.current_medications || "None",
-        medical: historyRow.medical_conditions || "None",
-        dental: historyRow.last_dental_visit || "None",
-        blood_type: patient.blood_type || "—",
-        emergency_contact: emergencyContact || "—",
-      },
     });
   } catch (err) {
     console.error(err);
