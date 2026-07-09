@@ -137,9 +137,13 @@ app.put("/api/patients/me", async (req, res) => {
     return res.status(401).json({ error: "Not logged in" });
   }
 
+  const conn = await pool.getConnection();
   try {
     const body = req.body || {};
 
+    // first_name, last_name, and contact_number now live on `users`,
+    // shared across patients/staff/dentist. Everything else here stays
+    // in `patients`.
     const first_name = requireField(body, "first_name");
     const last_name = requireField(body, "last_name");
     const date_of_birth = requireField(body, "date_of_birth");
@@ -166,6 +170,7 @@ app.put("/api/patients/me", async (req, res) => {
     if (!blood_type) missing.push("blood_type");
 
     if (missing.length) {
+      conn.release();
       return res
         .status(400)
         .json({ ok: false, error: `Missing field(s): ${missing.join(", ")}` });
@@ -173,27 +178,32 @@ app.put("/api/patients/me", async (req, res) => {
 
     const normalizedGender = gender.toLowerCase();
     if (!["male", "female"].includes(normalizedGender)) {
+      conn.release();
       return res.status(400).json({ ok: false, error: "Invalid gender." });
     }
 
-    const [existing] = await pool.execute(
+    await conn.beginTransaction();
+
+    await conn.execute(
+      `UPDATE users SET first_name = ?, last_name = ?, contact_number = ?
+       WHERE user_id = ?`,
+      [first_name, last_name, contact_number, req.session.userId],
+    );
+
+    const [existing] = await conn.execute(
       "SELECT patient_id FROM patients WHERE user_id = ?",
       [req.session.userId],
     );
 
     if (existing.length) {
-      await pool.execute(
+      await conn.execute(
         `UPDATE patients SET
-          first_name = ?, last_name = ?, date_of_birth = ?, gender = ?,
-          contact_number = ?, house_no = ?, street = ?,
+          date_of_birth = ?, gender = ?, house_no = ?, street = ?,
           barangay = ?, city = ?, zip_code = ?, blood_type = ?
         WHERE user_id = ?`,
         [
-          first_name,
-          last_name,
           date_of_birth,
           normalizedGender,
-          contact_number,
           house_no,
           street,
           barangay,
@@ -204,18 +214,14 @@ app.put("/api/patients/me", async (req, res) => {
         ],
       );
     } else {
-      await pool.execute(
+      await conn.execute(
         `INSERT INTO patients
-          (user_id, first_name, last_name, date_of_birth, gender,
-           contact_number, house_no, street, barangay, city, zip_code, blood_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (user_id, date_of_birth, gender, house_no, street, barangay, city, zip_code, blood_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           req.session.userId,
-          first_name,
-          last_name,
           date_of_birth,
           normalizedGender,
-          contact_number,
           house_no,
           street,
           barangay,
@@ -226,12 +232,18 @@ app.put("/api/patients/me", async (req, res) => {
       );
     }
 
+    await conn.commit();
     return res.json({ ok: true, message: "Profile saved successfully." });
   } catch (err) {
+    try {
+      await conn.rollback();
+    } catch (_) {}
     console.error(err);
     return res
       .status(500)
       .json({ ok: false, error: err?.message || "Database error" });
+  } finally {
+    conn.release();
   }
 });
 
@@ -246,16 +258,16 @@ app.post("/api/patients", async (req, res) => {
   try {
     const body = req.body || {};
 
-    const first_name =
-      requireField(body, "first_name") || requireField(body, "firstName");
-    const last_name =
-      requireField(body, "last_name") || requireField(body, "lastName");
+    // first_name/last_name/contact_number now live on `users`. This route
+    // links a patient profile to an existing user account instead of
+    // collecting name/contact directly.
+    const user_id = parseInt(
+      requireField(body, "user_id") || requireField(body, "userId"),
+      10,
+    );
     const date_of_birth =
       requireField(body, "date_of_birth") || requireField(body, "dob");
     const genderRaw = requireField(body, "gender") || requireField(body, "sex");
-    const contact_number =
-      requireField(body, "contact_number") ||
-      requireField(body, "contactNumber");
     const house_no = requireField(body, "house_no");
     const street = requireField(body, "street");
     const barangay = requireField(body, "barangay");
@@ -267,11 +279,9 @@ app.post("/api/patients", async (req, res) => {
     const gender = validateGender(genderRaw);
 
     const missing = [];
-    if (!first_name) missing.push("first_name");
-    if (!last_name) missing.push("last_name");
+    if (!user_id) missing.push("user_id");
     if (!date_of_birth) missing.push("date_of_birth");
     if (!gender) missing.push("gender (male/female)");
-    if (!contact_number) missing.push("contact_number");
     if (!house_no) missing.push("house_no");
     if (!street) missing.push("street");
     if (!barangay) missing.push("barangay");
@@ -286,20 +296,34 @@ app.post("/api/patients", async (req, res) => {
       });
     }
 
+    const [users] = await pool.execute(
+      "SELECT user_id FROM users WHERE user_id = ?",
+      [user_id],
+    );
+    if (!users.length) {
+      return res.status(404).json({ ok: false, error: "User not found." });
+    }
+
+    const [existing] = await pool.execute(
+      "SELECT patient_id FROM patients WHERE user_id = ?",
+      [user_id],
+    );
+    if (existing.length) {
+      return res
+        .status(409)
+        .json({ ok: false, error: "This user already has a patient profile." });
+    }
+
     const [result] = await pool.execute(
       `INSERT INTO patients (
-        first_name, last_name, date_of_birth, gender, contact_number,
-        house_no, street, barangay, city, zip_code, blood_type
+        user_id, date_of_birth, gender, house_no, street, barangay, city, zip_code, blood_type
       ) VALUES (
-          :first_name, :last_name, :date_of_birth, :gender, :contact_number,
-          :house_no, :street, :barangay, :city, :zip_code, :blood_type
+          :user_id, :date_of_birth, :gender, :house_no, :street, :barangay, :city, :zip_code, :blood_type
       )`,
       {
-        first_name,
-        last_name,
+        user_id,
         date_of_birth,
         gender,
-        contact_number,
         house_no,
         street,
         barangay,
@@ -329,24 +353,24 @@ app.post("/api/staff", async (req, res) => {
   try {
     const body = req.body || {};
 
-    const first_name = requireField(body, "first_name");
-    const last_name = requireField(body, "last_name");
+    // name/contact_number/email now live on `users`; this route links a
+    // staff profile to an existing user account. employment_status column
+    // was removed, so it's no longer collected or inserted.
+    const user_id = parseInt(
+      requireField(body, "user_id") || requireField(body, "userId"),
+      10,
+    );
     const date_of_birth = requireField(body, "date_of_birth");
     const genderRaw = requireField(body, "gender");
-    const contact_number = requireField(body, "contact_number");
-    const email = requireField(body, "email");
     const shift_schedule = requireField(body, "shift_schedule");
     const hire_date = requireField(body, "hire_date");
 
     const gender = validateGender(genderRaw);
 
     const missing = [];
-    if (!first_name) missing.push("first_name");
-    if (!last_name) missing.push("last_name");
+    if (!user_id) missing.push("user_id");
     if (!date_of_birth) missing.push("date_of_birth");
     if (!gender) missing.push("gender (male/female)");
-    if (!contact_number) missing.push("contact_number");
-    if (!email) missing.push("email");
     if (!shift_schedule) missing.push("shift_schedule");
     if (!hire_date) missing.push("hire_date");
 
@@ -357,21 +381,34 @@ app.post("/api/staff", async (req, res) => {
       });
     }
 
+    const [users] = await pool.execute(
+      "SELECT user_id FROM users WHERE user_id = ?",
+      [user_id],
+    );
+    if (!users.length) {
+      return res.status(404).json({ ok: false, error: "User not found." });
+    }
+
+    const [existing] = await pool.execute(
+      "SELECT staff_id FROM staff WHERE user_id = ?",
+      [user_id],
+    );
+    if (existing.length) {
+      return res
+        .status(409)
+        .json({ ok: false, error: "This user already has a staff profile." });
+    }
+
     const [result] = await pool.execute(
       `INSERT INTO staff (
-        first_name, last_name, date_of_birth, gender, contact_number,
-        email, shift_schedule, hire_date
+        user_id, date_of_birth, gender, shift_schedule, hire_date
       ) VALUES (
-        :first_name, :last_name, :date_of_birth, :gender, :contact_number,
-        :email, :shift_schedule, :hire_date
+        :user_id, :date_of_birth, :gender, :shift_schedule, :hire_date
       )`,
       {
-        first_name,
-        last_name,
+        user_id,
         date_of_birth,
         gender,
-        contact_number,
-        email,
         shift_schedule,
         hire_date,
       },
@@ -400,12 +437,14 @@ app.post("/api/doctors", async (req, res) => {
 
     const body = req.body || {};
 
-    const first_name = requireField(body, "first_name");
-    const last_name = requireField(body, "last_name");
+    // name/contact_number/email now live on `users`; this route links a
+    // dentist profile to an existing user account.
+    const user_id = parseInt(
+      requireField(body, "user_id") || requireField(body, "userId"),
+      10,
+    );
     const date_of_birth = requireField(body, "date_of_birth");
     const genderRaw = requireField(body, "gender");
-    const contact_number = requireField(body, "contact_number");
-    const email = requireField(body, "email");
     const hire_date = requireField(body, "hire_date");
     const specialization = requireField(body, "specialization");
     const license_number_raw = requireField(body, "license_number");
@@ -416,12 +455,9 @@ app.post("/api/doctors", async (req, res) => {
     const gender = validateGender(genderRaw);
 
     const missing = [];
-    if (!first_name) missing.push("first_name");
-    if (!last_name) missing.push("last_name");
+    if (!user_id) missing.push("user_id");
     if (!date_of_birth) missing.push("date_of_birth");
     if (!gender) missing.push("gender (male/female)");
-    if (!contact_number) missing.push("contact_number");
-    if (!email) missing.push("email");
     if (!hire_date) missing.push("hire_date");
     if (!specialization) missing.push("specialization");
     if (!license_number || Number.isNaN(license_number))
@@ -435,21 +471,36 @@ app.post("/api/doctors", async (req, res) => {
       });
     }
 
+    const [users] = await conn.execute(
+      "SELECT user_id FROM users WHERE user_id = ?",
+      [user_id],
+    );
+    if (!users.length) {
+      await conn.rollback();
+      return res.status(404).json({ ok: false, error: "User not found." });
+    }
+
+    const [existing] = await conn.execute(
+      "SELECT dentist_id FROM dentist WHERE user_id = ?",
+      [user_id],
+    );
+    if (existing.length) {
+      await conn.rollback();
+      return res
+        .status(409)
+        .json({ ok: false, error: "This user already has a doctor profile." });
+    }
+
     const [dentistResult] = await conn.execute(
       `INSERT INTO dentist (
-        first_name, last_name, date_of_birth, gender, contact_number,
-        email, specialization, license_number
+        user_id, date_of_birth, gender, specialization, license_number
       ) VALUES (
-        :first_name, :last_name, :date_of_birth, :gender, :contact_number,
-        :email, :specialization, :license_number
+        :user_id, :date_of_birth, :gender, :specialization, :license_number
       )`,
       {
-        first_name,
-        last_name,
+        user_id,
         date_of_birth,
         gender,
-        contact_number,
-        email,
         specialization,
         license_number,
       },
@@ -559,32 +610,36 @@ app.get("/api/appointments", async (req, res) => {
       [rows] = await pool.execute(
         `SELECT
            a.appointment_id, a.patient_id,
-           p.first_name, p.last_name,
+           pu.first_name, pu.last_name,
            d.dentist_id,
-           CONCAT('Dr. ', d.first_name, ' ', d.last_name) AS doctor_name,
+           CONCAT('Dr. ', du.first_name, ' ', du.last_name) AS doctor_name,
            DATE_FORMAT(a.appointment_date, '%Y-%m-%d') AS appointment_date,
            DATE_FORMAT(a.appointment_time, '%H:%i:%s') AS appointment_time,
            a.appointment_type, a.appointment_status,
            a.reason_for_visit, a.cancel_reason, a.created_at
          FROM appointments a
          JOIN patients p ON p.patient_id = a.patient_id
+         JOIN users pu ON pu.user_id = p.user_id
          LEFT JOIN dentist d ON d.dentist_id = a.dentist_id
+         LEFT JOIN users du ON du.user_id = d.user_id
          ORDER BY a.appointment_date DESC, a.appointment_time DESC`,
       );
     } else {
       [rows] = await pool.execute(
         `SELECT
            a.appointment_id, a.patient_id,
-           p.first_name, p.last_name,
+           pu.first_name, pu.last_name,
            d.dentist_id,
-           CONCAT('Dr. ', d.first_name, ' ', d.last_name) AS doctor_name,
+           CONCAT('Dr. ', du.first_name, ' ', du.last_name) AS doctor_name,
            DATE_FORMAT(a.appointment_date, '%Y-%m-%d') AS appointment_date,
            DATE_FORMAT(a.appointment_time, '%H:%i:%s') AS appointment_time,
            a.appointment_type, a.appointment_status,
            a.reason_for_visit, a.cancel_reason, a.created_at
          FROM appointments a
          JOIN patients p ON p.patient_id = a.patient_id
+         JOIN users pu ON pu.user_id = p.user_id
          LEFT JOIN dentist d ON d.dentist_id = a.dentist_id
+         LEFT JOIN users du ON du.user_id = d.user_id
          WHERE p.user_id = ?
          ORDER BY a.appointment_date DESC, a.appointment_time DESC`,
         [req.session.userId],
@@ -684,13 +739,7 @@ app.post("/api/appointments", async (req, res) => {
         .json({ ok: false, error: "Invalid appointment_type." });
     }
 
-    const validStatuses = [
-      "scheduled",
-      "confirmed",
-      "pending",
-      "completed",
-      "cancelled",
-    ];
+    const validStatuses = ["scheduled", "completed", "cancelled"];
     if (!validStatuses.includes(appointment_status)) {
       return res
         .status(400)
@@ -809,7 +858,7 @@ app.patch("/api/appointments/:id/status", async (req, res) => {
   const body = req.body || {};
   const appointment_status = requireField(body, "status");
 
-  const validStatuses = ["scheduled", "confirmed", "cancelled", "completed"];
+  const validStatuses = ["scheduled", "cancelled", "completed"];
   if (!appointment_status || !validStatuses.includes(appointment_status)) {
     return res
       .status(400)
@@ -882,7 +931,7 @@ app.get("/api/dashboard/stats", async (req, res) => {
     const [[{ pending_review }]] = await pool.execute(
       `SELECT COUNT(*) AS pending_review
        FROM appointments
-       WHERE appointment_status IN ('scheduled', 'pending')`,
+       WHERE appointment_status = 'scheduled'`,
     );
 
     return res.json({
@@ -906,12 +955,13 @@ app.get("/api/dashboard/schedule", async (req, res) => {
     const [rows] = await pool.execute(
       `SELECT
          DATE_FORMAT(a.appointment_time, '%h:%i %p')                          AS time,
-         CONCAT(p.first_name, ' ', p.last_name)                               AS patient,
+         CONCAT(u.first_name, ' ', u.last_name)                               AS patient,
          COALESCE(NULLIF(a.reason_for_visit, ''), a.appointment_type)         AS reason,
          a.appointment_status                                                  AS status,
          a.appointment_id
        FROM appointments a
        JOIN patients p ON p.patient_id = a.patient_id
+       JOIN users u ON u.user_id = p.user_id
        WHERE a.appointment_date = CURDATE()
          AND a.appointment_status != 'cancelled'
        ORDER BY a.appointment_time ASC`,
@@ -983,17 +1033,17 @@ app.get("/api/patients/search", async (req, res) => {
     const [rows] = await pool.execute(
       `SELECT
          p.patient_id,
-         p.first_name,
-         p.last_name,
-         p.contact_number,
+         u.first_name,
+         u.last_name,
+         u.contact_number,
          u.email
        FROM patients p
        LEFT JOIN users u ON u.user_id = p.user_id
-       WHERE p.first_name LIKE ?
-          OR p.last_name LIKE ?
-          OR CONCAT(p.first_name, ' ', p.last_name) LIKE ?
+       WHERE u.first_name LIKE ?
+          OR u.last_name LIKE ?
+          OR CONCAT(u.first_name, ' ', u.last_name) LIKE ?
           OR u.email LIKE ?
-          OR p.contact_number LIKE ?
+          OR u.contact_number LIKE ?
        LIMIT 12`,
       [search, search, search, search, search],
     );
@@ -1018,8 +1068,8 @@ app.get("/api/patients/:id", async (req, res) => {
   try {
     const [rows] = await pool.execute(
       `SELECT
-         p.patient_id, p.user_id, p.first_name, p.last_name,
-         p.date_of_birth, p.gender, p.contact_number,
+         p.patient_id, p.user_id, u.first_name, u.last_name,
+         p.date_of_birth, p.gender, u.contact_number,
          p.house_no, p.street, p.barangay, p.city, p.zip_code,
          p.blood_type, p.created_at, u.email
        FROM patients p
@@ -1056,9 +1106,10 @@ app.get("/api/dentists", async (req, res) => {
 
   try {
     const [rows] = await pool.execute(
-      `SELECT dentist_id, first_name, last_name, specialization
-       FROM dentist
-       ORDER BY first_name, last_name`,
+      `SELECT d.dentist_id, u.first_name, u.last_name, d.specialization
+       FROM dentist d
+       JOIN users u ON u.user_id = d.user_id
+       ORDER BY u.first_name, u.last_name`,
     );
     return res.json(rows);
   } catch (err) {
@@ -1078,9 +1129,10 @@ app.get("/api/dentists/search", async (req, res) => {
     if (!q) return res.json([]);
     const search = `%${q}%`;
     const [rows] = await pool.execute(
-      `SELECT dentist_id, first_name, last_name, specialization, email
-         FROM dentist
-        WHERE first_name LIKE ? OR last_name LIKE ? OR CONCAT(first_name, ' ', last_name) LIKE ? OR email LIKE ? OR specialization LIKE ?
+      `SELECT d.dentist_id, u.first_name, u.last_name, d.specialization, u.email
+         FROM dentist d
+         JOIN users u ON u.user_id = d.user_id
+        WHERE u.first_name LIKE ? OR u.last_name LIKE ? OR CONCAT(u.first_name, ' ', u.last_name) LIKE ? OR u.email LIKE ? OR d.specialization LIKE ?
         LIMIT 12`,
       [search, search, search, search, search],
     );
@@ -1107,9 +1159,10 @@ app.get("/api/dental-records/patient/:patientId", async (req, res) => {
   try {
     const [patientRows] = await pool.execute(
       `SELECT
-         p.patient_id, p.first_name, p.last_name, p.blood_type, p.date_of_birth,
+         p.patient_id, u.first_name, u.last_name, p.blood_type, p.date_of_birth,
          COALESCE(pr.patient_status, 'active') AS status
        FROM patients p
+       LEFT JOIN users u ON u.user_id = p.user_id
        LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
        WHERE p.patient_id = ?`,
       [patientId],
@@ -1175,9 +1228,10 @@ app.get("/api/dental-records/patient/:patientId", async (req, res) => {
          COALESCE(pt.actual_price, t.default_price) AS price,
          COALESCE(pt.actual_duration, t.default_duration) AS duration,
          t.category AS category,
-         CONCAT(d.first_name, ' ', d.last_name) AS doctor_name
+         CONCAT(du.first_name, ' ', du.last_name) AS doctor_name
        FROM dental_records dr
        LEFT JOIN dentist d ON d.dentist_id = dr.dentist_id
+       LEFT JOIN users du ON du.user_id = d.user_id
        LEFT JOIN patient_treatments pt ON pt.dental_record_id = dr.dental_record_id
        LEFT JOIN treatment t ON t.treatment_id = pt.treatment_id
        WHERE dr.patient_id = ?
@@ -1413,7 +1467,9 @@ app.post("/api/dental-records", async (req, res) => {
     let doctorName = "—";
     if (dentist_id) {
       const [dentistRows] = await pool.execute(
-        "SELECT first_name, last_name FROM dentist WHERE dentist_id = ?",
+        `SELECT u.first_name, u.last_name FROM dentist d
+         JOIN users u ON u.user_id = d.user_id
+         WHERE d.dentist_id = ?`,
         [dentist_id],
       );
       if (dentistRows.length) {
@@ -1638,15 +1694,17 @@ app.get("/api/admin/users/summary", async (req, res) => {
       "SELECT COUNT(*) AS total_staff FROM staff",
     );
     const [doctors] = await pool.execute(
-      `SELECT dentist_id, first_name, last_name, specialization
-         FROM dentist
-        ORDER BY created_at DESC
+      `SELECT d.dentist_id, u.first_name, u.last_name, d.specialization
+         FROM dentist d
+         JOIN users u ON u.user_id = d.user_id
+        ORDER BY u.created_at DESC
         LIMIT 5`,
     );
     const [staff] = await pool.execute(
-      `SELECT staff_id, first_name, last_name, shift_schedule
-         FROM staff
-        ORDER BY created_at DESC
+      `SELECT s.staff_id, u.first_name, u.last_name, s.shift_schedule
+         FROM staff s
+         JOIN users u ON u.user_id = s.user_id
+        ORDER BY u.created_at DESC
         LIMIT 5`,
     );
 
@@ -1686,8 +1744,7 @@ app.post("/api/admin/users/promote", async (req, res) => {
     const license_number = license_number_raw
       ? Number(license_number_raw)
       : null;
-    const employment_status =
-      requireField(body, "employment_status") || "Active";
+    // employment_status column was removed from staff; no longer collected.
     const shift_schedule = requireField(body, "shift_schedule");
     const missing = [];
     if (!user_id) missing.push("user_id");
@@ -1723,15 +1780,15 @@ app.post("/api/admin/users/promote", async (req, res) => {
       return res.status(404).json({ ok: false, error: "User not found." });
     }
 
-    const user = users[0];
-
     const date_of_birth = requireField(body, "date_of_birth") || "1970-01-01";
     const gender = requireField(body, "gender") || "male";
 
     if (role === "doctor") {
+      // name/contact/email now come from the linked users row, so dedupe
+      // by user_id rather than by name or email.
       const [existing] = await pool.execute(
-        "SELECT dentist_id FROM dentist WHERE email = ? OR (first_name = ? AND last_name = ?)",
-        [user.email, user.first_name, user.last_name],
+        "SELECT dentist_id FROM dentist WHERE user_id = ?",
+        [user_id],
       );
       if (existing.length) {
         return res.status(409).json({
@@ -1742,19 +1799,9 @@ app.post("/api/admin/users/promote", async (req, res) => {
 
       const [result] = await pool.execute(
         `INSERT INTO dentist (
-           first_name, last_name, date_of_birth, gender, contact_number,
-           email, specialization, license_number
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          user.first_name,
-          user.last_name,
-          date_of_birth,
-          gender,
-          user.contact_number || "",
-          user.email,
-          specialization,
-          license_number,
-        ],
+           user_id, date_of_birth, gender, specialization, license_number
+         ) VALUES (?, ?, ?, ?, ?)`,
+        [user_id, date_of_birth, gender, specialization, license_number],
       );
 
       await pool.execute("UPDATE users SET role = 'admin' WHERE user_id = ?", [
@@ -1764,8 +1811,8 @@ app.post("/api/admin/users/promote", async (req, res) => {
     }
 
     const [existingStaff] = await pool.execute(
-      "SELECT staff_id FROM staff WHERE email = ? OR (first_name = ? AND last_name = ?)",
-      [user.email, user.first_name, user.last_name],
+      "SELECT staff_id FROM staff WHERE user_id = ?",
+      [user_id],
     );
     if (existingStaff.length) {
       return res
@@ -1775,20 +1822,9 @@ app.post("/api/admin/users/promote", async (req, res) => {
 
     const [result] = await pool.execute(
       `INSERT INTO staff (
-         first_name, last_name, date_of_birth, gender, contact_number,
-         email, shift_schedule, hire_date, employment_status
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        user.first_name,
-        user.last_name,
-        date_of_birth,
-        gender,
-        user.contact_number || "",
-        user.email,
-        shift_schedule,
-        hire_date,
-        employment_status,
-      ],
+         user_id, date_of_birth, gender, shift_schedule, hire_date
+       ) VALUES (?, ?, ?, ?, ?)`,
+      [user_id, date_of_birth, gender, shift_schedule, hire_date],
     );
 
     await pool.execute("UPDATE users SET role = 'admin' WHERE user_id = ?", [

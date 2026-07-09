@@ -13,11 +13,8 @@ CREATE TABLE users (
 CREATE TABLE patients (
   patient_id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT UNIQUE,
-  first_name VARCHAR(100) NOT NULL,
-  last_name VARCHAR(100) NOT NULL,
   date_of_birth DATE NOT NULL,
   gender ENUM('male', 'female') NOT NULL,
-  contact_number VARCHAR(20) NOT NULL,
   house_no VARCHAR(20) NOT NULL,
   street VARCHAR(50) NOT NULL,
   barangay VARCHAR(50) NOT NULL,
@@ -31,30 +28,21 @@ CREATE TABLE patients (
 CREATE TABLE staff (
   staff_id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT UNIQUE,
-  first_name VARCHAR(100) NOT NULL,
-  last_name VARCHAR(100) NOT NULL,
   date_of_birth DATE NOT NULL,
   gender ENUM('male', 'female') NOT NULL,
-  contact_number VARCHAR(20) NOT NULL,
-  email VARCHAR(150) UNIQUE NOT NULL,
   shift_schedule VARCHAR(100) NOT NULL,
   hire_date DATE NOT NULL,
-  employment_status ENUM('Active', 'On-leave', 'Terminated') NOT NULL DEFAULT 'Active'
-  -- FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
 CREATE TABLE dentist (
   dentist_id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT UNIQUE,
-  first_name VARCHAR(100) NOT NULL,
-  last_name VARCHAR(100) NOT NULL,
   date_of_birth DATE NOT NULL,
   gender ENUM('male', 'female') NOT NULL,
-  contact_number VARCHAR(20) NOT NULL,
-  email VARCHAR(150) UNIQUE NOT NULL,
   specialization VARCHAR(20) NOT NULL,
-  license_number INT NOT NULL
-  -- FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+  license_number INT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
 CREATE TABLE dentist_schedule (
@@ -63,8 +51,6 @@ CREATE TABLE dentist_schedule (
   day_of_week ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') NOT NULL,
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,
-  -- effective_from DATE NOT NULL,
-  -- effective_to DATE NOT NULL,
   is_active BOOLEAN DEFAULT TRUE,
   FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id)
 );
@@ -76,7 +62,7 @@ CREATE TABLE appointments (
   appointment_date DATE NOT NULL,
   appointment_time TIME NOT NULL,
   appointment_type ENUM('consultation', 'cleaning', 'filling', 'extraction', 'other') NOT NULL,
-  appointment_status ENUM('scheduled', 'confirmed', 'pending', 'completed', 'cancelled') NOT NULL DEFAULT 'scheduled',
+  appointment_status ENUM('scheduled', 'completed', 'cancelled') NOT NULL DEFAULT 'scheduled',
   reason_for_visit TEXT,
   cancel_reason TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
