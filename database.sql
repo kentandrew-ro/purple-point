@@ -88,18 +88,7 @@ CREATE TABLE dental_records (
   FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE,
   FOREIGN KEY (appointment_id) REFERENCES appointments(appointment_id),
   FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id),
-  FOREIGN KEY (recorded_by) REFERENCES staff(staff_id)
-);
-
-CREATE TABLE patient_history (
-  patient_history_id INT AUTO_INCREMENT PRIMARY KEY,
-  patient_id INT NOT NULL,
-  allergies TEXT,
-  current_medications TEXT,
-  medical_conditions TEXT,
-  last_dental_visit DATE,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
+  FOREIGN KEY (recorded_by) REFERENCES users(user_id)
 );
 
 CREATE TABLE patient_records (
@@ -122,7 +111,7 @@ CREATE TABLE patient_vitals (
   weight DECIMAL(5,2),
   date_recorded DATE NOT NULL,
   FOREIGN KEY (dental_record_id) REFERENCES dental_records(dental_record_id) ON DELETE CASCADE,
-  FOREIGN KEY (staff_id) REFERENCES staff(staff_id)
+  FOREIGN KEY (staff_id) REFERENCES users(user_id)
 );
 
 CREATE TABLE tooth_chart (

@@ -1407,19 +1407,6 @@ function renderVitalsTable(vitals) {
     .join("");
 }
 
-function renderHistory(history) {
-  const h = history || {};
-  document.getElementById("history-allergies").textContent = h.allergies || "—";
-  document.getElementById("history-medications").textContent =
-    h.medications || "—";
-  document.getElementById("history-medical").textContent = h.medical || "—";
-  document.getElementById("history-dental").textContent = h.dental || "—";
-  document.getElementById("history-blood-type").textContent =
-    h.blood_type || "—";
-  document.getElementById("history-emergency").textContent =
-    h.emergency_contact || "—";
-}
-
 function showDentalSubtab(name) {
   document.querySelectorAll(".dental-subtab-content").forEach((el) => {
     el.style.display = "none";
@@ -1462,7 +1449,6 @@ async function loadDentalPatientRecord(patientId) {
     renderToothChartLegend(document.getElementById("tooth-chart-legend"));
     renderTreatmentsTable(data.treatments);
     renderVitalsTable(data.vitals);
-    renderHistory(data.history);
 
     showDentalSubtab("tooth-chart");
 

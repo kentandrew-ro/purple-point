@@ -1422,6 +1422,7 @@ app.post("/api/dental-records", async (req, res) => {
     if (!patient_id) missing.push("patient_id");
     if (!visit_date) missing.push("visit_date");
     if (!procedure) missing.push("procedure");
+    if (!dentist_id) missing.push("dentist_id");
 
     if (missing.length) {
       return res
@@ -1437,21 +1438,31 @@ app.post("/api/dental-records", async (req, res) => {
       return res.status(404).json({ ok: false, error: "Patient not found." });
     }
 
-    if (dentist_id) {
-      const [dentists] = await pool.execute(
-        "SELECT dentist_id FROM dentist WHERE dentist_id = ?",
-        [dentist_id],
-      );
-      if (!dentists.length) {
-        return res.status(404).json({ ok: false, error: "Dentist not found." });
-      }
+    const [dentists] = await pool.execute(
+      "SELECT dentist_id FROM dentist WHERE dentist_id = ?",
+      [dentist_id],
+    );
+    if (!dentists.length) {
+      return res.status(404).json({ ok: false, error: "Dentist not found." });
     }
+
+    // dental_records.recorded_by references users(user_id) — any logged-in
+    // admin (staff, dentist, or plain admin) can record entries.
+    const recorded_by = req.session.userId;
 
     const [result] = await pool.execute(
       `INSERT INTO dental_records
-         (patient_id, dentist_id, visit_date, treatment_plan_notes, teeth_involved, clinical_notes)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [patient_id, dentist_id, visit_date, procedure, teeth_involved, notes],
+         (patient_id, dentist_id, recorded_by, visit_date, treatment_plan_notes, teeth_involved, clinical_notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        patient_id,
+        dentist_id,
+        recorded_by,
+        visit_date,
+        procedure,
+        teeth_involved,
+        notes,
+      ],
     );
 
     const [newTreatment] = await pool.execute(
@@ -1514,7 +1525,6 @@ app.post("/api/patient-vitals", async (req, res) => {
     const body = req.body || {};
     const patient_id = parseInt(requireField(body, "patient_id"), 10);
     const dental_record_id_raw = requireField(body, "dental_record_id");
-    const staff_id = parseInt(requireField(body, "staff_id"), 10);
     const date_recorded = requireField(body, "date_recorded");
     const blood_pressure = requireField(body, "blood_pressure") || null;
     const heart_rate = requireField(body, "heart_rate") || null;
@@ -1524,7 +1534,6 @@ app.post("/api/patient-vitals", async (req, res) => {
     const missing = [];
     if (!patient_id) missing.push("patient_id");
     if (!date_recorded) missing.push("date_recorded");
-    if (!staff_id) missing.push("staff_id");
 
     if (missing.length) {
       return res
@@ -1539,6 +1548,10 @@ app.post("/api/patient-vitals", async (req, res) => {
     if (!patients.length) {
       return res.status(404).json({ ok: false, error: "Patient not found." });
     }
+
+    // patient_vitals.staff_id references users(user_id) — any logged-in
+    // admin (staff, dentist, or plain admin) can record vitals.
+    const staff_id = req.session.userId;
 
     let dental_record_id = dental_record_id_raw
       ? parseInt(dental_record_id_raw, 10)
