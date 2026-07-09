@@ -115,7 +115,10 @@ app.get("/api/patients/me", async (req, res) => {
 
   try {
     const [rows] = await pool.execute(
-      "SELECT * FROM patients WHERE user_id = ?",
+      `SELECT p.*, u.first_name, u.last_name, u.contact_number, u.email
+       FROM patients p
+       LEFT JOIN users u ON u.user_id = p.user_id
+       WHERE p.user_id = ?`,
       [req.session.userId],
     );
 

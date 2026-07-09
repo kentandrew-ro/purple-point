@@ -337,7 +337,7 @@ async function handleAddSubmit(event) {
     appointment_date: dateParts?.appointment_date || "",
     appointment_time: dateParts?.appointment_time || "",
     appointment_type: form.appointment_type.value,
-    status: form.appointment_status.value,
+    status: isAdminField ? form.appointment_status.value : "scheduled",
     reason: form.reason_for_visit.value.trim() || null,
     dentist_id: form.dentist_id.value
       ? parseInt(form.dentist_id.value, 10)
@@ -467,6 +467,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (field) field.style.display = "block";
         const input = field?.querySelector("input");
         if (input) input.required = true;
+
+        const statusField = document.getElementById("appointment-status-field");
+        if (statusField) statusField.style.display = "block";
       }
     }
   } catch {}

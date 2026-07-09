@@ -14,6 +14,9 @@
       #patient-id-field {
         display: none;
       }
+      #appointment-status-field {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -48,14 +51,13 @@
         <select name="dentist_id">
           <option value="">Select Doctor (Optional)</option></select
         ><br />
-        <select name="appointment_status" required>
-          <option value="">Select Appointment Status</option>
-          <option value="scheduled">Scheduled</option>
-          <option value="confirmed">Confirmed</option>
-          <option value="pending">Pending</option>
-          <option value="completed">Completed</option>
-          <option value="cancelled">Cancelled</option></select
-        ><br />
+        <div id="appointment-status-field">
+          <select name="appointment_status">
+            <option value="scheduled" selected>Scheduled</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option></select
+          ><br />
+        </div>
         <textarea
           name="reason_for_visit"
           placeholder="Reason for Visit"
