@@ -1308,7 +1308,9 @@ async function handleToothClick(box) {
     box.style.background = revertStyle.bg;
     box.style.color = revertStyle.color;
     box.title = `Tooth ${toothNum} — ${TOOTH_STATUS_LABELS[current]} (click to change)`;
-    alert("Could not save tooth status. Please try again.");
+    alert(
+      `Could not save tooth status: ${err?.message || "Please try again."}`,
+    );
   }
 }
 

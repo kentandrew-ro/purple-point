@@ -27,7 +27,7 @@ CREATE TABLE patients (
 
 CREATE TABLE staff (
   staff_id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT UNIQUE,
+  user_id INT NOT NULL UNIQUE,
   date_of_birth DATE NOT NULL,
   gender ENUM('male', 'female') NOT NULL,
   shift_schedule VARCHAR(100) NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE staff (
 
 CREATE TABLE dentist (
   dentist_id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT UNIQUE,
+  user_id INT NOT NULL UNIQUE,
   date_of_birth DATE NOT NULL,
   gender ENUM('male', 'female') NOT NULL,
   specialization VARCHAR(20) NOT NULL,
