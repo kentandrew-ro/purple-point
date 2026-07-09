@@ -236,14 +236,10 @@
 
       <div id="tab-set-schedules" style="display: none">
         <h2>Set &amp; Manage Schedules</h2>
-        <p>
-          Add appointments, block dates for leaves and holidays, or adjust
-          clinic hours.
-        </p>
+        <p>Add appointments or adjust clinic hours.</p>
 
         <div id="view-choose" class="card">
           <button type="button" id="btn-show-add">Add Appointment</button>
-          <button type="button" id="btn-show-view">Block Dates/Leave</button>
           <button type="button" id="btn-show-cancel">Clinic Hours</button>
         </div>
 
@@ -312,56 +308,6 @@
             <button type="submit">Save Appointment</button>
           </form>
           <div id="add-appointment-result" style="margin-top: 16px"></div>
-        </div>
-
-        <div id="block-dates-form-card" class="card" style="display: none">
-          <h2>Block Dates/Leave</h2>
-          <form id="block-sched-form">
-            <div class="field" style="position: relative">
-              <label for="block-dentist-search">Dentist</label>
-              <input
-                id="block-dentist-search"
-                type="text"
-                placeholder="Search dentist by name, email, or specialization"
-                autocomplete="off"
-              />
-              <input id="block_dentist_id" name="dentist_id" type="hidden" />
-              <div id="block-dentist-suggestions" class="suggestions"></div>
-            </div>
-
-            <div class="field">
-              <label for="from_date">From Date</label>
-              <input
-                id="from_date"
-                name="from_date"
-                type="datetime-local"
-                required
-              />
-            </div>
-
-            <div class="field">
-              <label for="to_date">To Date</label>
-              <input
-                id="to_date"
-                name="to_date"
-                type="datetime-local"
-                required
-              />
-            </div>
-
-            <div class="field">
-              <label for="reason_for_leave">Reason for Leave</label>
-              <textarea
-                id="reason_for_leave"
-                name="reason_for_leave"
-                placeholder="Reason for Leave"
-              ></textarea>
-            </div>
-
-            <button type="submit">Save Dates</button>
-          </form>
-          <div id="block-sched-result" style="margin-top: 16px"></div>
-          <h2 style="color: red"><i>Feature to be reviewed..</i></h2>
         </div>
 
         <div id="clinic-hours-form-card" class="card" style="display: none">

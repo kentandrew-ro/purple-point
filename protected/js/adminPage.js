@@ -787,15 +787,6 @@ function showResult(el, html) {
   el.innerHTML = html;
 }
 
-async function submitBlockDatesForm(e) {
-  e.preventDefault();
-  const resultBox = document.getElementById("block-sched-result");
-  showResult(
-    resultBox,
-    `<h3>Not implemented yet</h3><p>Block dates/leave scheduling is not available yet.</p>`,
-  );
-}
-
 async function submitClinicHoursForm(e) {
   e.preventDefault();
   const form = e.target;
@@ -942,10 +933,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const doctorCard = document.getElementById("doctor-form-card");
   const staffCard = document.getElementById("staff-form-card");
   const btnAppointment = document.getElementById("btn-show-add");
-  const btnBlockDates = document.getElementById("btn-show-view");
   const btnClinicHours = document.getElementById("btn-show-cancel");
   const appointmentCard = document.getElementById("appointment-form-card");
-  const blockDatesCard = document.getElementById("block-dates-form-card");
   const clinicHoursCard = document.getElementById("clinic-hours-form-card");
 
   function showDoctorForm() {
@@ -960,19 +949,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function showAppointmentForm() {
     if (appointmentCard) appointmentCard.style.display = "block";
-    if (blockDatesCard) blockDatesCard.style.display = "none";
-    if (clinicHoursCard) clinicHoursCard.style.display = "none";
-  }
-
-  function showBlockDatesForm() {
-    if (appointmentCard) appointmentCard.style.display = "none";
-    if (blockDatesCard) blockDatesCard.style.display = "block";
     if (clinicHoursCard) clinicHoursCard.style.display = "none";
   }
 
   function showClinicHoursForm() {
     if (appointmentCard) appointmentCard.style.display = "none";
-    if (blockDatesCard) blockDatesCard.style.display = "none";
     if (clinicHoursCard) clinicHoursCard.style.display = "block";
   }
 
@@ -980,15 +961,12 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnStaff) btnStaff.addEventListener("click", showStaffForm);
   if (btnAppointment)
     btnAppointment.addEventListener("click", showAppointmentForm);
-  if (btnBlockDates)
-    btnBlockDates.addEventListener("click", showBlockDatesForm);
   if (btnClinicHours)
     btnClinicHours.addEventListener("click", showClinicHoursForm);
 
   const doctorForm = document.getElementById("doctor-form");
   const staffForm = document.getElementById("staff-form");
   const appointmentForm = document.getElementById("add-appointment-form");
-  const blockDatesForm = document.getElementById("block-sched-form");
   const clinicHoursForm = document.getElementById("clinic-hours-form");
 
   if (doctorForm) doctorForm.addEventListener("submit", submitDoctorForm);
@@ -1000,8 +978,6 @@ document.addEventListener("DOMContentLoaded", () => {
         ? handleAddSubmit
         : submitAppointmentForm,
     );
-  if (blockDatesForm)
-    blockDatesForm.addEventListener("submit", submitBlockDatesForm);
   if (clinicHoursForm)
     clinicHoursForm.addEventListener("submit", submitClinicHoursForm);
 
@@ -1087,34 +1063,6 @@ document.addEventListener("DOMContentLoaded", () => {
         .split("·")[0]
         .trim();
       clinicDentistSuggestions.innerHTML = "";
-    });
-  }
-
-  const blockDentistSearch = document.getElementById("block-dentist-search");
-  const blockDentistSuggestions = document.getElementById(
-    "block-dentist-suggestions",
-  );
-  if (blockDentistSearch) {
-    blockDentistSearch.addEventListener(
-      "input",
-      debounce(
-        (e) =>
-          searchDentists(e.target.value || "", "block-dentist-suggestions"),
-        200,
-      ),
-    );
-  }
-  if (blockDentistSuggestions) {
-    blockDentistSuggestions.addEventListener("click", (e) => {
-      const el = e.target.closest(".suggestion-item");
-      if (!el) return;
-      const id = el.dataset.dentistId;
-      const label = el.textContent || "";
-      document.getElementById("block_dentist_id").value = id;
-      document.getElementById("block-dentist-search").value = label
-        .split("·")[0]
-        .trim();
-      blockDentistSuggestions.innerHTML = "";
     });
   }
 
