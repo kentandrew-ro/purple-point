@@ -1449,6 +1449,7 @@ async function loadDentalPatientRecord(patientId) {
     renderToothChartLegend(document.getElementById("tooth-chart-legend"));
     renderTreatmentsTable(data.treatments);
     renderVitalsTable(data.vitals);
+    loadPatientAppointmentsForTreatmentForm(dentalCurrentPatientId);
 
     showDentalSubtab("tooth-chart");
 
@@ -1461,6 +1462,37 @@ async function loadDentalPatientRecord(patientId) {
   }
 }
 
+async function loadPatientAppointmentsForTreatmentForm(patientId) {
+  const select = document.getElementById("treatment_appointment");
+  if (!select || !patientId) return;
+
+  select.innerHTML = `<option value="">— No appointment —</option>`;
+
+  try {
+    const res = await fetch(
+      `/api/appointments/patient/${encodeURIComponent(patientId)}`,
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) return;
+
+    (data.appointments || []).forEach((a) => {
+      if (a.has_dental_record) return; // already tied to a record
+      const opt = document.createElement("option");
+      opt.value = a.appointment_id;
+      opt.dataset.dentistId = a.dentist_id || "";
+      opt.dataset.date = a.appointment_date;
+      const doctor =
+        a.doctor_name && a.doctor_name.trim() !== "Dr."
+          ? ` · ${a.doctor_name}`
+          : "";
+      opt.textContent = `${formatDentalDate(a.appointment_date)} · ${a.appointment_type}${doctor} (${a.appointment_status})`;
+      select.appendChild(opt);
+    });
+  } catch (err) {
+    console.error(err);
+  }
+}
+
 function resetTreatmentFormToAddMode() {
   dentalEditingTreatmentId = null;
   const form = document.getElementById("add-treatment-form");
@@ -1469,6 +1501,8 @@ function resetTreatmentFormToAddMode() {
   if (idField) idField.value = "";
   const dentistIdField = document.getElementById("treatment_dentist_id");
   if (dentistIdField) dentistIdField.value = "";
+  const appointmentField = document.getElementById("treatment_appointment");
+  if (appointmentField) appointmentField.value = "";
   const title = document.getElementById("treatment-form-title");
   if (title) title.textContent = "Add Treatment";
   const submitBtn = document.getElementById("treatment-form-submit-btn");
@@ -1601,6 +1635,23 @@ function initDentalRecordsTab() {
     });
   }
 
+  const treatmentAppointmentSelect = document.getElementById(
+    "treatment_appointment",
+  );
+  if (treatmentAppointmentSelect) {
+    treatmentAppointmentSelect.addEventListener("change", (e) => {
+      const opt = e.target.selectedOptions[0];
+      if (!opt || !opt.value) return;
+      if (opt.dataset.date) {
+        document.getElementById("treatment_date").value = opt.dataset.date;
+      }
+      if (opt.dataset.dentistId) {
+        document.getElementById("treatment_dentist_id").value =
+          opt.dataset.dentistId;
+      }
+    });
+  }
+
   if (addTreatmentForm) {
     addTreatmentForm.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -1610,6 +1661,8 @@ function initDentalRecordsTab() {
 
       const payload = {
         patient_id: dentalCurrentPatientId,
+        appointment_id:
+          document.getElementById("treatment_appointment").value || null,
         dentist_id:
           document.getElementById("treatment_dentist_id").value || null,
         visit_date: document.getElementById("treatment_date").value,
