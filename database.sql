@@ -144,23 +144,28 @@ CREATE TABLE patient_treatments (
 
 CREATE TABLE billing (
   billing_id INT AUTO_INCREMENT PRIMARY KEY,
-  patient_id INT NOT NULL,
-  patient_treatment_id INT NOT NULL,
+  patient_treatment_id INT NOT NULL UNIQUE,
   billing_date DATE NOT NULL DEFAULT (CURRENT_DATE),
   total_amount DECIMAL(10,2) NOT NULL,
   billing_status ENUM('unpaid', 'partial', 'paid') NOT NULL DEFAULT 'unpaid',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT chk_billing_total_amount CHECK (total_amount >= 0),
   FOREIGN KEY (patient_treatment_id) REFERENCES patient_treatments(patient_treatment_id)
 );
 
 CREATE TABLE payments (
   payment_id INT AUTO_INCREMENT PRIMARY KEY,
   billing_id INT NOT NULL,
-  payment_date DATE NOT NULL,
+  payment_date DATE NOT NULL DEFAULT (CURRENT_DATE),
   amount_paid DECIMAL(10,2) NOT NULL,
   payment_method ENUM('cash', 'card', 'gcash', 'bank_transfer', 'other') NOT NULL,
   payment_status ENUM('pending', 'completed', 'failed') NOT NULL DEFAULT 'completed',
+  reference_number VARCHAR(100),
+  notes VARCHAR(255),
+  recorded_by INT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (billing_id) REFERENCES billing(billing_id) ON DELETE CASCADE
+  CONSTRAINT chk_payment_amount CHECK (amount_paid > 0),
+  FOREIGN KEY (billing_id) REFERENCES billing(billing_id) ON DELETE CASCADE,
+  FOREIGN KEY (recorded_by) REFERENCES users(user_id)
 );

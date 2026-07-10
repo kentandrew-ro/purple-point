@@ -672,7 +672,222 @@
       </div>
       <div id="tab-billing" style="display: none">
         <h2>Billing &amp; Payments</h2>
-        <p>(Content goes here)</p>
+
+        <label for="billing-search">Search patient or billing ID</label>
+        <input
+          id="billing-search"
+          type="search"
+          placeholder="Patient name or billing ID"
+        />
+
+        <label for="billing-status-filter">Status</label>
+        <select id="billing-status-filter">
+          <option value="">All statuses</option>
+          <option value="unpaid">Unpaid</option>
+          <option value="partial">Partial</option>
+          <option value="paid">Paid</option>
+        </select>
+
+        <button type="button" id="billing-new-button">New Statement</button>
+        <p id="billing-list-message" aria-live="polite"></p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Billing ID</th>
+              <th>Patient</th>
+              <th>Billing Date</th>
+              <th>Treatment</th>
+              <th>Total Amount</th>
+              <th>Amount Paid</th>
+              <th>Balance</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="billing-table-body">
+            <tr>
+              <td colspan="9">Open this tab to load billing statements.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <dialog id="billing-new-dialog">
+          <h3>New Billing Statement</h3>
+          <form id="billing-new-form">
+            <p>
+              <label for="billing-patient-search">Patient</label><br />
+              <input
+                id="billing-patient-search"
+                type="search"
+                placeholder="Search patient name"
+                autocomplete="off"
+                required
+              />
+              <input id="billing-patient-id" type="hidden" />
+            </p>
+            <p>
+              <label for="billing-patient-results">Matching patients</label
+              ><br />
+              <select id="billing-patient-results" size="4"></select>
+            </p>
+            <p>
+              <label for="billing-treatment-select">Treatment</label><br />
+              <select id="billing-treatment-select" required disabled>
+                <option value="">Select a patient first</option>
+              </select>
+            </p>
+            <p>
+              <label for="billing-date">Billing date</label><br />
+              <input id="billing-date" type="date" required />
+            </p>
+            <p>
+              <label for="billing-total-amount">Total amount</label><br />
+              <input
+                id="billing-total-amount"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+              />
+            </p>
+            <p>
+              <label for="billing-new-status">Status (entered manually)</label
+              ><br />
+              <select id="billing-new-status" required>
+                <option value="unpaid">Unpaid</option>
+                <option value="partial">Partial</option>
+                <option value="paid">Paid</option>
+              </select>
+            </p>
+            <p id="billing-new-error" aria-live="polite"></p>
+            <button type="submit">Create Statement</button>
+            <button type="button" id="billing-new-cancel">Cancel</button>
+          </form>
+        </dialog>
+
+        <dialog id="billing-view-dialog">
+          <h3>Billing Statement <span id="billing-view-id"></span></h3>
+          <p>
+            <strong>Patient:</strong> <span id="billing-view-patient"></span>
+          </p>
+          <p>
+            <strong>Treatment:</strong>
+            <span id="billing-view-treatment"></span>
+          </p>
+          <p>
+            <strong>Amount paid:</strong> <span id="billing-view-paid"></span>
+          </p>
+          <p>
+            <strong>Balance:</strong> <span id="billing-view-balance"></span>
+          </p>
+
+          <h4>Update Statement</h4>
+          <form id="billing-update-form">
+            <input id="billing-update-id" type="hidden" />
+            <p>
+              <label for="billing-update-date">Billing date</label><br />
+              <input id="billing-update-date" type="date" required />
+            </p>
+            <p>
+              <label for="billing-update-total">Total amount</label><br />
+              <input
+                id="billing-update-total"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+              />
+            </p>
+            <p>
+              <label for="billing-update-status"
+                >Status (entered manually)</label
+              ><br />
+              <select id="billing-update-status" required>
+                <option value="unpaid">Unpaid</option>
+                <option value="partial">Partial</option>
+                <option value="paid">Paid</option>
+              </select>
+            </p>
+            <p id="billing-update-error" aria-live="polite"></p>
+            <button type="submit">Update Statement</button>
+          </form>
+
+          <h4>Payment History</h4>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Amount</th>
+                <th>Method</th>
+                <th>Payment Status</th>
+                <th>Reference</th>
+                <th>Recorded By</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="billing-payment-history"></tbody>
+          </table>
+
+          <h4>Record Payment</h4>
+          <form id="billing-payment-form">
+            <p>
+              <label for="billing-payment-date">Payment date</label><br />
+              <input id="billing-payment-date" type="date" required />
+            </p>
+            <p>
+              <label for="billing-payment-amount">Amount paid</label><br />
+              <input
+                id="billing-payment-amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                required
+              />
+            </p>
+            <p>
+              <label for="billing-payment-method">Payment method</label><br />
+              <select id="billing-payment-method" required>
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="gcash">GCash</option>
+                <option value="bank_transfer">Bank transfer</option>
+                <option value="other">Other</option>
+              </select>
+            </p>
+            <p>
+              <label for="billing-payment-status">Payment status</label><br />
+              <select id="billing-payment-status" required>
+                <option value="completed">Completed</option>
+                <option value="pending">Pending</option>
+                <option value="failed">Failed</option>
+              </select>
+            </p>
+            <p>
+              <label for="billing-payment-billing-status"
+                >Billing status after payment (entered manually)</label
+              ><br />
+              <select id="billing-payment-billing-status" required>
+                <option value="unpaid">Unpaid</option>
+                <option value="partial">Partial</option>
+                <option value="paid">Paid</option>
+              </select>
+            </p>
+            <p>
+              <label for="billing-payment-reference">Reference number</label
+              ><br />
+              <input id="billing-payment-reference" maxlength="100" />
+            </p>
+            <p>
+              <label for="billing-payment-notes">Notes</label><br />
+              <textarea id="billing-payment-notes" maxlength="255"></textarea>
+            </p>
+            <p id="billing-payment-error" aria-live="polite"></p>
+            <button type="submit">Record Payment</button>
+          </form>
+
+          <p><button type="button" id="billing-view-close">Close</button></p>
+        </dialog>
       </div>
       <div id="tab-audit-logs" style="display: none">
         <h2>Audit Logs</h2>

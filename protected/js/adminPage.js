@@ -4,6 +4,7 @@ function showTab(name) {
     .forEach((el) => (el.style.display = "none"));
   const tab = document.getElementById("tab-" + name);
   if (tab) tab.style.display = "block";
+  if (name === "billing") loadBillings();
 }
 
 const now = new Date();
@@ -1108,6 +1109,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadDoctorStaffSummaries();
   initDentalRecordsTab();
+  initBillingTab();
 });
 
 const TOOTH_STATUS_ORDER = [
@@ -1712,4 +1714,391 @@ function initDentalRecordsTab() {
       }
     });
   }
+}
+
+function billingToday() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  return new Date(now.getTime() - offset * 60000).toISOString().slice(0, 10);
+}
+
+function formatPeso(value) {
+  const amount = Number(value || 0);
+  return amount.toLocaleString("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    minimumFractionDigits: 2,
+  });
+}
+
+async function billingFetchJson(url, options) {
+  const res = await fetch(url, options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.error || "Billing request failed.");
+  }
+  return data;
+}
+
+async function loadBillings() {
+  const tbody = document.getElementById("billing-table-body");
+  const message = document.getElementById("billing-list-message");
+  if (!tbody) return;
+
+  const q = document.getElementById("billing-search")?.value.trim() || "";
+  const status = document.getElementById("billing-status-filter")?.value || "";
+  tbody.innerHTML =
+    '<tr><td colspan="9">Loading billing statements...</td></tr>';
+  if (message) message.textContent = "";
+
+  try {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (status) params.set("status", status);
+    const data = await billingFetchJson(`/api/billings?${params.toString()}`);
+    const rows = data.billings || [];
+
+    if (!rows.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="9">No billing statements found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows
+      .map(
+        (row) => `
+          <tr>
+            <td>#${escapeHtml(row.billing_id)}</td>
+            <td>${escapeHtml(row.patient_name)}</td>
+            <td>${escapeHtml(row.billing_date)}</td>
+            <td>${escapeHtml(row.treatment_name)}</td>
+            <td>${escapeHtml(formatPeso(row.total_amount))}</td>
+            <td>${escapeHtml(formatPeso(row.amount_paid))}</td>
+            <td>${escapeHtml(formatPeso(row.balance))}</td>
+            <td>${escapeHtml(row.billing_status)}</td>
+            <td><button type="button" class="billing-view-button" data-billing-id="${escapeHtml(row.billing_id)}">View</button></td>
+          </tr>`,
+      )
+      .join("");
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML =
+      '<tr><td colspan="9">Unable to load billing statements.</td></tr>';
+    if (message) message.textContent = err.message;
+  }
+}
+
+async function searchBillingPatients(query) {
+  const results = document.getElementById("billing-patient-results");
+  if (!results) return;
+  results.innerHTML = "";
+  document.getElementById("billing-patient-id").value = "";
+  resetBillingTreatmentOptions("Select a patient first");
+
+  if (query.trim().length < 2) return;
+
+  try {
+    const patients = await billingFetchJson(
+      `/api/patients/search?q=${encodeURIComponent(query.trim())}`,
+    );
+    results.innerHTML = patients.length
+      ? patients
+          .map(
+            (patient) =>
+              `<option value="${escapeHtml(patient.patient_id)}">${escapeHtml(`${patient.first_name || ""} ${patient.last_name || ""}`.trim())}</option>`,
+          )
+          .join("")
+      : '<option value="">No patients found</option>';
+  } catch (err) {
+    results.innerHTML = `<option value="">${escapeHtml(err.message)}</option>`;
+  }
+}
+
+function resetBillingTreatmentOptions(message) {
+  const select = document.getElementById("billing-treatment-select");
+  if (!select) return;
+  select.disabled = true;
+  select.innerHTML = `<option value="">${escapeHtml(message)}</option>`;
+  document.getElementById("billing-total-amount").value = "";
+}
+
+async function loadBillingTreatmentOptions(patientId) {
+  const select = document.getElementById("billing-treatment-select");
+  if (!select) return;
+  resetBillingTreatmentOptions("Loading treatments...");
+
+  try {
+    const data = await billingFetchJson(
+      `/api/billing/patients/${encodeURIComponent(patientId)}/treatments`,
+    );
+    const treatments = data.treatments || [];
+    if (!treatments.length) {
+      resetBillingTreatmentOptions("No unbilled treatments found");
+      return;
+    }
+
+    select.disabled = false;
+    select.innerHTML =
+      '<option value="">Select treatment</option>' +
+      treatments
+        .map(
+          (treatment) => `
+            <option value="${escapeHtml(treatment.patient_treatment_id)}" data-price="${escapeHtml(treatment.actual_price)}">
+              ${escapeHtml(treatment.treatment_name)} - ${escapeHtml(treatment.treatment_date)} - ${escapeHtml(formatPeso(treatment.actual_price))}
+            </option>`,
+        )
+        .join("");
+  } catch (err) {
+    resetBillingTreatmentOptions(err.message);
+  }
+}
+
+function renderBillingPaymentHistory(payments) {
+  const tbody = document.getElementById("billing-payment-history");
+  if (!tbody) return;
+  if (!payments?.length) {
+    tbody.innerHTML = '<tr><td colspan="7">No payments recorded.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = payments
+    .map(
+      (payment) => `
+        <tr>
+          <td>${escapeHtml(payment.payment_date)}</td>
+          <td>${escapeHtml(formatPeso(payment.amount_paid))}</td>
+          <td>${escapeHtml(payment.payment_method)}</td>
+          <td>${escapeHtml(payment.payment_status)}</td>
+          <td>${escapeHtml(payment.reference_number || "-")}</td>
+          <td>${escapeHtml(payment.recorded_by_name)}</td>
+          <td>${escapeHtml(payment.notes || "-")}</td>
+        </tr>`,
+    )
+    .join("");
+}
+
+async function openBillingStatement(billingId) {
+  const dialog = document.getElementById("billing-view-dialog");
+  const updateError = document.getElementById("billing-update-error");
+  const paymentError = document.getElementById("billing-payment-error");
+  if (!dialog) return;
+  if (updateError) updateError.textContent = "";
+  if (paymentError) paymentError.textContent = "";
+
+  try {
+    const data = await billingFetchJson(
+      `/api/billings/${encodeURIComponent(billingId)}`,
+    );
+    const billing = data.billing;
+
+    document.getElementById("billing-view-id").textContent =
+      `#${billing.billing_id}`;
+    document.getElementById("billing-view-patient").textContent =
+      billing.patient_name;
+    document.getElementById("billing-view-treatment").textContent =
+      billing.treatment_name;
+    document.getElementById("billing-view-paid").textContent = formatPeso(
+      billing.amount_paid,
+    );
+    document.getElementById("billing-view-balance").textContent = formatPeso(
+      billing.balance,
+    );
+    document.getElementById("billing-update-id").value = billing.billing_id;
+    document.getElementById("billing-update-date").value = billing.billing_date;
+    document.getElementById("billing-update-total").value = Number(
+      billing.total_amount,
+    ).toFixed(2);
+    document.getElementById("billing-update-status").value =
+      billing.billing_status;
+    document.getElementById("billing-payment-date").value = billingToday();
+    document.getElementById("billing-payment-amount").value = "";
+    document.getElementById("billing-payment-method").value = "cash";
+    document.getElementById("billing-payment-status").value = "completed";
+    document.getElementById("billing-payment-billing-status").value =
+      billing.billing_status;
+    document.getElementById("billing-payment-reference").value = "";
+    document.getElementById("billing-payment-notes").value = "";
+    renderBillingPaymentHistory(data.payments || []);
+
+    if (!dialog.open) dialog.showModal();
+  } catch (err) {
+    console.error(err);
+    const message = document.getElementById("billing-list-message");
+    if (message) message.textContent = err.message;
+  }
+}
+
+function initBillingTab() {
+  const search = document.getElementById("billing-search");
+  const filter = document.getElementById("billing-status-filter");
+  const tbody = document.getElementById("billing-table-body");
+  const newButton = document.getElementById("billing-new-button");
+  const newDialog = document.getElementById("billing-new-dialog");
+  const newForm = document.getElementById("billing-new-form");
+  const patientSearch = document.getElementById("billing-patient-search");
+  const patientResults = document.getElementById("billing-patient-results");
+  const treatmentSelect = document.getElementById("billing-treatment-select");
+  const viewDialog = document.getElementById("billing-view-dialog");
+  const updateForm = document.getElementById("billing-update-form");
+  const paymentForm = document.getElementById("billing-payment-form");
+
+  if (search) {
+    search.addEventListener("input", debounce(loadBillings, 250));
+  }
+  if (filter) filter.addEventListener("change", loadBillings);
+  if (tbody) {
+    tbody.addEventListener("click", (event) => {
+      const button = event.target.closest(".billing-view-button");
+      if (button) openBillingStatement(button.dataset.billingId);
+    });
+  }
+
+  if (newButton && newDialog) {
+    newButton.addEventListener("click", () => {
+      newForm.reset();
+      document.getElementById("billing-patient-id").value = "";
+      document.getElementById("billing-patient-results").innerHTML = "";
+      document.getElementById("billing-date").value = billingToday();
+      document.getElementById("billing-new-status").value = "unpaid";
+      document.getElementById("billing-new-error").textContent = "";
+      resetBillingTreatmentOptions("Select a patient first");
+      newDialog.showModal();
+    });
+  }
+  document
+    .getElementById("billing-new-cancel")
+    ?.addEventListener("click", () => {
+      newDialog.close();
+    });
+
+  if (patientSearch) {
+    patientSearch.addEventListener(
+      "input",
+      debounce((event) => searchBillingPatients(event.target.value), 250),
+    );
+  }
+  if (patientResults) {
+    patientResults.addEventListener("change", () => {
+      const option = patientResults.selectedOptions[0];
+      if (!option?.value) return;
+      document.getElementById("billing-patient-id").value = option.value;
+      patientSearch.value = option.textContent.trim();
+      loadBillingTreatmentOptions(option.value);
+    });
+  }
+  if (treatmentSelect) {
+    treatmentSelect.addEventListener("change", () => {
+      const option = treatmentSelect.selectedOptions[0];
+      document.getElementById("billing-total-amount").value = option?.dataset
+        .price
+        ? Number(option.dataset.price).toFixed(2)
+        : "";
+    });
+  }
+
+  if (newForm) {
+    newForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const error = document.getElementById("billing-new-error");
+      error.textContent = "";
+      const patientId = document.getElementById("billing-patient-id").value;
+      if (!patientId) {
+        error.textContent =
+          "Please choose a patient from the matching patients list.";
+        return;
+      }
+
+      try {
+        await billingFetchJson("/api/billings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            patient_treatment_id: treatmentSelect.value,
+            billing_date: document.getElementById("billing-date").value,
+            total_amount: document.getElementById("billing-total-amount").value,
+            billing_status: document.getElementById("billing-new-status").value,
+          }),
+        });
+        newDialog.close();
+        await loadBillings();
+      } catch (err) {
+        error.textContent = err.message;
+      }
+    });
+  }
+
+  if (updateForm) {
+    updateForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const error = document.getElementById("billing-update-error");
+      const billingId = document.getElementById("billing-update-id").value;
+      error.textContent = "";
+      try {
+        await billingFetchJson(
+          `/api/billings/${encodeURIComponent(billingId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              billing_date: document.getElementById("billing-update-date")
+                .value,
+              total_amount: document.getElementById("billing-update-total")
+                .value,
+              billing_status: document.getElementById("billing-update-status")
+                .value,
+            }),
+          },
+        );
+        await openBillingStatement(billingId);
+        await loadBillings();
+      } catch (err) {
+        error.textContent = err.message;
+      }
+    });
+  }
+
+  if (paymentForm) {
+    paymentForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const error = document.getElementById("billing-payment-error");
+      const billingId = document.getElementById("billing-update-id").value;
+      error.textContent = "";
+      try {
+        await billingFetchJson(
+          `/api/billings/${encodeURIComponent(billingId)}/payments`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              payment_date: document.getElementById("billing-payment-date")
+                .value,
+              amount_paid: document.getElementById("billing-payment-amount")
+                .value,
+              payment_method: document.getElementById("billing-payment-method")
+                .value,
+              payment_status: document.getElementById("billing-payment-status")
+                .value,
+              billing_status: document.getElementById(
+                "billing-payment-billing-status",
+              ).value,
+              reference_number: document.getElementById(
+                "billing-payment-reference",
+              ).value,
+              notes: document.getElementById("billing-payment-notes").value,
+            }),
+          },
+        );
+        await openBillingStatement(billingId);
+        await loadBillings();
+      } catch (err) {
+        error.textContent = err.message;
+      }
+    });
+  }
+
+  document
+    .getElementById("billing-view-close")
+    ?.addEventListener("click", () => {
+      viewDialog.close();
+    });
 }

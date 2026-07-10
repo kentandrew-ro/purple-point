@@ -29,6 +29,28 @@ function validateGender(gender) {
   return g;
 }
 
+function requireAdmin(req, res) {
+  if (!req.session.userId) {
+    res.status(401).json({ ok: false, error: "Not logged in" });
+    return false;
+  }
+  if (req.session.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Forbidden" });
+    return false;
+  }
+  return true;
+}
+
+function isIsoDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+const BILLING_STATUSES = ["unpaid", "partial", "paid"];
+const PAYMENT_METHODS = ["cash", "card", "gcash", "bank_transfer", "other"];
+const PAYMENT_STATUSES = ["pending", "completed", "failed"];
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 app.use(
@@ -974,6 +996,364 @@ app.get("/api/dashboard/schedule", async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: err?.message || "Database error" });
+  }
+});
+
+app.get("/api/billings", async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const q = requireField(req.query, "q") || "";
+  const status = (requireField(req.query, "status") || "").toLowerCase();
+  if (status && !BILLING_STATUSES.includes(status)) {
+    return res.status(400).json({ ok: false, error: "Invalid billing status." });
+  }
+
+  try {
+    const search = `%${q}%`;
+    const [rows] = await pool.execute(
+      `SELECT
+         b.billing_id,
+         dr.patient_id,
+         CONCAT(u.first_name, ' ', u.last_name) AS patient_name,
+         DATE_FORMAT(b.billing_date, '%Y-%m-%d') AS billing_date,
+         t.treatment_name,
+         b.total_amount,
+         COALESCE(SUM(CASE WHEN pay.payment_status = 'completed' THEN pay.amount_paid ELSE 0 END), 0) AS amount_paid,
+         b.total_amount - COALESCE(SUM(CASE WHEN pay.payment_status = 'completed' THEN pay.amount_paid ELSE 0 END), 0) AS balance,
+         b.billing_status
+       FROM billing b
+       JOIN patient_treatments pt ON pt.patient_treatment_id = b.patient_treatment_id
+       JOIN dental_records dr ON dr.dental_record_id = pt.dental_record_id
+       JOIN patients p ON p.patient_id = dr.patient_id
+       JOIN users u ON u.user_id = p.user_id
+       JOIN treatment t ON t.treatment_id = pt.treatment_id
+       LEFT JOIN payments pay ON pay.billing_id = b.billing_id
+       WHERE (? = '' OR CONCAT(u.first_name, ' ', u.last_name) LIKE ? OR CAST(b.billing_id AS CHAR) LIKE ?)
+         AND (? = '' OR b.billing_status = ?)
+       GROUP BY b.billing_id, dr.patient_id, u.first_name, u.last_name,
+                b.billing_date, t.treatment_name, b.total_amount, b.billing_status
+       ORDER BY b.billing_date DESC, b.billing_id DESC`,
+      [q, search, search, status, status],
+    );
+
+    return res.json({ ok: true, billings: rows });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ ok: false, error: err?.message || "Database error" });
+  }
+});
+
+app.get("/api/billing/patients/:patientId/treatments", async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const patientId = parseInt(req.params.patientId, 10);
+  if (!patientId) {
+    return res.status(400).json({ ok: false, error: "Invalid patient ID." });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT
+         pt.patient_treatment_id,
+         t.treatment_name,
+         pt.actual_price,
+         DATE_FORMAT(dr.visit_date, '%Y-%m-%d') AS treatment_date
+       FROM patient_treatments pt
+       JOIN dental_records dr ON dr.dental_record_id = pt.dental_record_id
+       JOIN treatment t ON t.treatment_id = pt.treatment_id
+       LEFT JOIN billing b ON b.patient_treatment_id = pt.patient_treatment_id
+       WHERE dr.patient_id = ? AND b.billing_id IS NULL
+       ORDER BY dr.visit_date DESC, pt.patient_treatment_id DESC`,
+      [patientId],
+    );
+
+    return res.json({ ok: true, treatments: rows });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ ok: false, error: err?.message || "Database error" });
+  }
+});
+
+app.post("/api/billings", async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const patientTreatmentId = Number.parseInt(req.body?.patient_treatment_id, 10);
+  const billingDate = requireField(req.body, "billing_date");
+  const totalAmountValue = requireField(req.body, "total_amount");
+  const totalAmount = Number(totalAmountValue);
+  const billingStatus = (requireField(req.body, "billing_status") || "").toLowerCase();
+
+  if (!patientTreatmentId) {
+    return res.status(400).json({ ok: false, error: "Please select a treatment." });
+  }
+  if (!isIsoDate(billingDate)) {
+    return res.status(400).json({ ok: false, error: "A valid billing date is required." });
+  }
+  if (totalAmountValue === null || totalAmountValue === "" || !Number.isFinite(totalAmount) || totalAmount < 0) {
+    return res.status(400).json({ ok: false, error: "Total amount must be zero or greater." });
+  }
+  if (!BILLING_STATUSES.includes(billingStatus)) {
+    return res.status(400).json({ ok: false, error: "Please select a valid billing status." });
+  }
+
+  try {
+    const [treatmentRows] = await pool.execute(
+      "SELECT patient_treatment_id FROM patient_treatments WHERE patient_treatment_id = ?",
+      [patientTreatmentId],
+    );
+    if (!treatmentRows.length) {
+      return res.status(404).json({ ok: false, error: "Treatment not found." });
+    }
+
+    const [result] = await pool.execute(
+      `INSERT INTO billing (patient_treatment_id, billing_date, total_amount, billing_status)
+       VALUES (?, ?, ?, ?)`,
+      [patientTreatmentId, billingDate, totalAmount, billingStatus],
+    );
+
+    return res.status(201).json({
+      ok: true,
+      message: "Billing statement created.",
+      billing_id: result.insertId,
+    });
+  } catch (err) {
+    if (err?.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ ok: false, error: "This treatment already has a billing statement." });
+    }
+    console.error(err);
+    return res.status(500).json({ ok: false, error: err?.message || "Database error" });
+  }
+});
+
+app.get("/api/billings/:id", async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const billingId = Number.parseInt(req.params.id, 10);
+  if (!billingId) {
+    return res.status(400).json({ ok: false, error: "Invalid billing ID." });
+  }
+
+  try {
+    const [billingRows] = await pool.execute(
+      `SELECT
+         b.billing_id,
+         b.patient_treatment_id,
+         dr.patient_id,
+         CONCAT(u.first_name, ' ', u.last_name) AS patient_name,
+         DATE_FORMAT(b.billing_date, '%Y-%m-%d') AS billing_date,
+         t.treatment_name,
+         b.total_amount,
+         COALESCE(SUM(CASE WHEN pay.payment_status = 'completed' THEN pay.amount_paid ELSE 0 END), 0) AS amount_paid,
+         b.total_amount - COALESCE(SUM(CASE WHEN pay.payment_status = 'completed' THEN pay.amount_paid ELSE 0 END), 0) AS balance,
+         b.billing_status
+       FROM billing b
+       JOIN patient_treatments pt ON pt.patient_treatment_id = b.patient_treatment_id
+       JOIN dental_records dr ON dr.dental_record_id = pt.dental_record_id
+       JOIN patients p ON p.patient_id = dr.patient_id
+       JOIN users u ON u.user_id = p.user_id
+       JOIN treatment t ON t.treatment_id = pt.treatment_id
+       LEFT JOIN payments pay ON pay.billing_id = b.billing_id
+       WHERE b.billing_id = ?
+       GROUP BY b.billing_id, b.patient_treatment_id, dr.patient_id,
+                u.first_name, u.last_name, b.billing_date, t.treatment_name,
+                b.total_amount, b.billing_status`,
+      [billingId],
+    );
+
+    if (!billingRows.length) {
+      return res.status(404).json({ ok: false, error: "Billing statement not found." });
+    }
+
+    const [paymentRows] = await pool.execute(
+      `SELECT
+         pay.payment_id,
+         DATE_FORMAT(pay.payment_date, '%Y-%m-%d') AS payment_date,
+         pay.amount_paid,
+         pay.payment_method,
+         pay.payment_status,
+         pay.reference_number,
+         pay.notes,
+         COALESCE(CONCAT(u.first_name, ' ', u.last_name), 'Unknown') AS recorded_by_name
+       FROM payments pay
+       LEFT JOIN users u ON u.user_id = pay.recorded_by
+       WHERE pay.billing_id = ?
+       ORDER BY pay.payment_date DESC, pay.payment_id DESC`,
+      [billingId],
+    );
+
+    return res.json({ ok: true, billing: billingRows[0], payments: paymentRows });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ ok: false, error: err?.message || "Database error" });
+  }
+});
+
+app.patch("/api/billings/:id", async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const billingId = Number.parseInt(req.params.id, 10);
+  const billingDate = requireField(req.body, "billing_date");
+  const totalAmountValue = requireField(req.body, "total_amount");
+  const totalAmount = Number(totalAmountValue);
+  const billingStatus = (requireField(req.body, "billing_status") || "").toLowerCase();
+
+  if (!billingId) {
+    return res.status(400).json({ ok: false, error: "Invalid billing ID." });
+  }
+  if (!isIsoDate(billingDate)) {
+    return res.status(400).json({ ok: false, error: "A valid billing date is required." });
+  }
+  if (totalAmountValue === null || totalAmountValue === "" || !Number.isFinite(totalAmount) || totalAmount < 0) {
+    return res.status(400).json({ ok: false, error: "Total amount must be zero or greater." });
+  }
+  if (!BILLING_STATUSES.includes(billingStatus)) {
+    return res.status(400).json({ ok: false, error: "Please select a valid billing status." });
+  }
+
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    const [billingRows] = await conn.execute(
+      "SELECT billing_id FROM billing WHERE billing_id = ? FOR UPDATE",
+      [billingId],
+    );
+    if (!billingRows.length) {
+      await conn.rollback();
+      return res.status(404).json({ ok: false, error: "Billing statement not found." });
+    }
+
+    const [[paymentTotal]] = await conn.execute(
+      `SELECT COALESCE(SUM(amount_paid), 0) AS amount_paid
+       FROM payments
+       WHERE billing_id = ? AND payment_status = 'completed'`,
+      [billingId],
+    );
+    if (Number(paymentTotal.amount_paid) > totalAmount) {
+      await conn.rollback();
+      return res.status(400).json({
+        ok: false,
+        error: "Total amount cannot be less than the completed payments.",
+      });
+    }
+
+    await conn.execute(
+      `UPDATE billing
+       SET billing_date = ?, total_amount = ?, billing_status = ?
+       WHERE billing_id = ?`,
+      [billingDate, totalAmount, billingStatus, billingId],
+    );
+    await conn.commit();
+    return res.json({ ok: true, message: "Billing statement updated." });
+  } catch (err) {
+    if (conn) await conn.rollback();
+    console.error(err);
+    return res.status(500).json({ ok: false, error: err?.message || "Database error" });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.post("/api/billings/:id/payments", async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const billingId = Number.parseInt(req.params.id, 10);
+  const paymentDate = requireField(req.body, "payment_date");
+  const amountPaid = Number(requireField(req.body, "amount_paid"));
+  const paymentMethod = (requireField(req.body, "payment_method") || "").toLowerCase();
+  const paymentStatus = (requireField(req.body, "payment_status") || "").toLowerCase();
+  const billingStatus = (requireField(req.body, "billing_status") || "").toLowerCase();
+  const referenceNumber = requireField(req.body, "reference_number");
+  const notes = requireField(req.body, "notes");
+
+  if (!billingId) {
+    return res.status(400).json({ ok: false, error: "Invalid billing ID." });
+  }
+  if (!isIsoDate(paymentDate)) {
+    return res.status(400).json({ ok: false, error: "A valid payment date is required." });
+  }
+  if (!Number.isFinite(amountPaid) || amountPaid <= 0) {
+    return res.status(400).json({ ok: false, error: "Payment amount must be greater than zero." });
+  }
+  if (!PAYMENT_METHODS.includes(paymentMethod)) {
+    return res.status(400).json({ ok: false, error: "Please select a valid payment method." });
+  }
+  if (!PAYMENT_STATUSES.includes(paymentStatus)) {
+    return res.status(400).json({ ok: false, error: "Please select a valid payment status." });
+  }
+  if (!BILLING_STATUSES.includes(billingStatus)) {
+    return res.status(400).json({ ok: false, error: "Please select the billing status manually." });
+  }
+  if (referenceNumber && referenceNumber.length > 100) {
+    return res.status(400).json({ ok: false, error: "Reference number is too long." });
+  }
+  if (notes && notes.length > 255) {
+    return res.status(400).json({ ok: false, error: "Payment notes are too long." });
+  }
+
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    const [billingRows] = await conn.execute(
+      "SELECT total_amount FROM billing WHERE billing_id = ? FOR UPDATE",
+      [billingId],
+    );
+    if (!billingRows.length) {
+      await conn.rollback();
+      return res.status(404).json({ ok: false, error: "Billing statement not found." });
+    }
+
+    if (paymentStatus === "completed") {
+      const [[paymentTotal]] = await conn.execute(
+        `SELECT COALESCE(SUM(amount_paid), 0) AS amount_paid
+         FROM payments
+         WHERE billing_id = ? AND payment_status = 'completed'`,
+        [billingId],
+      );
+      const newPaidTotal = Number(paymentTotal.amount_paid) + amountPaid;
+      if (newPaidTotal > Number(billingRows[0].total_amount)) {
+        await conn.rollback();
+        return res.status(400).json({
+          ok: false,
+          error: "Completed payment cannot exceed the remaining balance.",
+        });
+      }
+    }
+
+    const [result] = await conn.execute(
+      `INSERT INTO payments
+         (billing_id, payment_date, amount_paid, payment_method, payment_status,
+          reference_number, notes, recorded_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        billingId,
+        paymentDate,
+        amountPaid,
+        paymentMethod,
+        paymentStatus,
+        referenceNumber,
+        notes,
+        req.session.userId,
+      ],
+    );
+    await conn.execute(
+      "UPDATE billing SET billing_status = ? WHERE billing_id = ?",
+      [billingStatus, billingId],
+    );
+    await conn.commit();
+
+    return res.status(201).json({
+      ok: true,
+      message: "Payment recorded.",
+      payment_id: result.insertId,
+    });
+  } catch (err) {
+    if (conn) await conn.rollback();
+    console.error(err);
+    return res.status(500).json({ ok: false, error: err?.message || "Database error" });
+  } finally {
+    if (conn) conn.release();
   }
 });
 
