@@ -144,14 +144,19 @@ CREATE TABLE patient_treatments (
 
 CREATE TABLE billing (
   billing_id INT AUTO_INCREMENT PRIMARY KEY,
-  patient_treatment_id INT NOT NULL UNIQUE,
+  patient_id INT NOT NULL,
+  patient_treatment_id INT NOT NULL,
   billing_date DATE NOT NULL DEFAULT (CURRENT_DATE),
   total_amount DECIMAL(10,2) NOT NULL,
   billing_status ENUM('unpaid', 'partial', 'paid') NOT NULL DEFAULT 'unpaid',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT chk_billing_total_amount CHECK (total_amount >= 0),
-  FOREIGN KEY (patient_treatment_id) REFERENCES patient_treatments(patient_treatment_id)
+  KEY patient_id (patient_id),
+  KEY patient_treatment_id (patient_treatment_id),
+  UNIQUE KEY uq_billing_patient_treatment (patient_treatment_id),
+  CONSTRAINT billing_ibfk_1 FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+  CONSTRAINT billing_ibfk_2 FOREIGN KEY (patient_treatment_id) REFERENCES patient_treatments(patient_treatment_id)
 );
 
 CREATE TABLE payments (
