@@ -2065,7 +2065,7 @@ function initBillingTab() {
       const billingId = document.getElementById("billing-update-id").value;
       error.textContent = "";
       try {
-        await billingFetchJson(
+        const paymentResult = await billingFetchJson(
           `/api/billings/${encodeURIComponent(billingId)}/payments`,
           {
             method: "POST",
@@ -2091,6 +2091,8 @@ function initBillingTab() {
         );
         await openBillingStatement(billingId);
         await loadBillings();
+        document.getElementById("billing-payment-error").textContent =
+          `Payment recorded. Reference: ${paymentResult.reference_number}`;
       } catch (err) {
         error.textContent = err.message;
       }

@@ -1212,7 +1212,15 @@ app.get("/api/billings/:id", async (req, res) => {
          pay.amount_paid,
          pay.payment_method,
          pay.payment_status,
-         pay.reference_number,
+         COALESCE(
+           pay.reference_number,
+           CONCAT(
+             'PAY-',
+             DATE_FORMAT(pay.payment_date, '%Y%m%d'),
+             '-',
+             LPAD(pay.payment_id, 6, '0')
+           )
+         ) AS reference_number,
          pay.external_reference,
          pay.notes,
          COALESCE(CONCAT(u.first_name, ' ', u.last_name), 'Unknown') AS recorded_by_name
