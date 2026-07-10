@@ -983,12 +983,15 @@ app.get("/api/dashboard/schedule", async (req, res) => {
       `SELECT
          DATE_FORMAT(a.appointment_time, '%h:%i %p')                          AS time,
          CONCAT(u.first_name, ' ', u.last_name)                               AS patient,
+         CONCAT('Dr. ', du.first_name, ' ', du.last_name)                     AS doctor_name,
          COALESCE(NULLIF(a.reason_for_visit, ''), a.appointment_type)         AS reason,
          a.appointment_status                                                  AS status,
          a.appointment_id
        FROM appointments a
        JOIN patients p ON p.patient_id = a.patient_id
        JOIN users u ON u.user_id = p.user_id
+       LEFT JOIN dentist d ON d.dentist_id = a.dentist_id
+       LEFT JOIN users du ON du.user_id = d.user_id
        WHERE a.appointment_date = CURDATE()
          AND a.appointment_status != 'cancelled'
        ORDER BY a.appointment_time ASC`,

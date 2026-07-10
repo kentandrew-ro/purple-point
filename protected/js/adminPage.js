@@ -62,7 +62,7 @@ async function loadSchedule() {
         <tr>
           <td>${row.time}</td>
           <td>${row.patient}</td>
-          <td>--</td>
+          <td>${escapeHtml(row.doctor_name || "--")}</td>
           <td>${row.reason}</td>
           <td><span class="badge">${row.status.toUpperCase()}</span></td>
         </tr>`,
