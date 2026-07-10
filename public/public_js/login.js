@@ -31,3 +31,7 @@ document.getElementById("loginSubmit").addEventListener("click", async () => {
     alert("An error occurred. Check the console.");
   }
 });
+
+document.getElementById("signupButton").addEventListener("click", () => {
+  window.location.href = "/signup.html";
+});
