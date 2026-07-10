@@ -37,9 +37,9 @@ async function submitPatientForm(e) {
       throw new Error(data?.error || "Failed to save profile");
     }
 
-    resultBox.innerHTML = `<h2>Profile saved successfully!</h2>`;
+    resultBox.textContent = "Profile saved successfully!";
   } catch (err) {
-    resultBox.innerHTML = `<h2>Error</h2><p>${err?.message || "Unknown error"}</p>`;
+    resultBox.textContent = `Error: ${err?.message || "Unknown error"}`;
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }

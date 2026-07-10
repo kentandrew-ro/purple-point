@@ -40,8 +40,10 @@ CREATE TABLE dentist (
   user_id INT NOT NULL UNIQUE,
   date_of_birth DATE NOT NULL,
   gender ENUM('male', 'female') NOT NULL,
-  specialization VARCHAR(20) NOT NULL,
-  license_number INT NOT NULL,
+  specialization VARCHAR(100) NOT NULL,
+  license_number VARCHAR(50) NOT NULL,
+  hire_date DATE,
+  UNIQUE KEY uq_dentist_license_number (license_number),
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 

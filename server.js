@@ -2,11 +2,33 @@ require("dotenv").config();
 const express = require("express");
 const mysql = require("mysql2/promise");
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const path = require("path");
 const session = require("express-session");
 
 const app = express();
 const PORT = process.env.PORT;
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const SESSION_COOKIE_NAME = "purplepoint.sid";
+const INTERNAL_ERROR_MESSAGE = "An internal server error occurred.";
+const configuredSessionSecret = process.env.SESSION_SECRET?.trim();
+
+if (configuredSessionSecret && configuredSessionSecret.length < 32) {
+  throw new Error("SESSION_SECRET must contain at least 32 characters.");
+}
+if (IS_PRODUCTION && !configuredSessionSecret) {
+  throw new Error("SESSION_SECRET is required in production.");
+}
+
+const sessionSecret =
+  configuredSessionSecret || crypto.randomBytes(32).toString("hex");
+if (!configuredSessionSecret) {
+  console.warn(
+    "SESSION_SECRET is not set; using a temporary development secret. Sessions will reset when the server restarts.",
+  );
+}
+
+app.disable("x-powered-by");
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -55,24 +77,6 @@ const PAYMENT_STATUSES = ["pending", "completed", "failed"];
 
 function amountsEqual(first, second) {
   return Math.abs(Number(first) - Number(second)) < 0.005;
-}
-
-async function syncPaidBillingStatuses(billingId = null) {
-  const idCondition = billingId ? " AND b.billing_id = ?" : "";
-  const params = billingId ? [billingId] : [];
-  await pool.execute(
-    `UPDATE billing b
-     LEFT JOIN (
-       SELECT billing_id, SUM(amount_paid) AS amount_paid
-       FROM payments
-       WHERE payment_status = 'completed'
-       GROUP BY billing_id
-     ) totals ON totals.billing_id = b.billing_id
-     SET b.billing_status = 'paid'
-     WHERE b.total_amount - COALESCE(totals.amount_paid, 0) <= 0
-       AND b.billing_status <> 'paid'${idCondition}`,
-    params,
-  );
 }
 
 async function createAuditLog(executor, req, details) {
@@ -134,11 +138,19 @@ async function recordAudit(req, details) {
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+if (IS_PRODUCTION) app.set("trust proxy", 1);
 app.use(
   session({
-    secret: "your-secret-key",
+    name: SESSION_COOKIE_NAME,
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: IS_PRODUCTION,
+      maxAge: 8 * 60 * 60 * 1000,
+    },
   }),
 );
 
@@ -171,12 +183,10 @@ app.post("/api/login", async (req, res) => {
   const { identifier, password } = req.body;
 
   try {
-    const conn = await pool.getConnection();
-    const [rows] = await conn.query(
+    const [rows] = await pool.execute(
       "SELECT * FROM users WHERE username = ? OR email = ?",
       [identifier, identifier],
     );
-    conn.release();
 
     if (rows.length === 0) {
       return res.status(401).json({ error: "Invalid username or password." });
@@ -186,11 +196,19 @@ app.post("/api/login", async (req, res) => {
     const match = await bcrypt.compare(password, user.password_hash);
 
     if (match) {
+      await new Promise((resolve, reject) => {
+        req.session.regenerate((error) => (error ? reject(error) : resolve()));
+      });
       req.session.userId = user.user_id;
       req.session.role = user.role;
-      res.status(200).json({ message: "Login successful!", role: user.role });
+      await new Promise((resolve, reject) => {
+        req.session.save((error) => (error ? reject(error) : resolve()));
+      });
+      return res
+        .status(200)
+        .json({ message: "Login successful!", role: user.role });
     } else {
-      res.status(401).json({ error: "Invalid username or password." });
+      return res.status(401).json({ error: "Invalid username or password." });
     }
   } catch (error) {
     console.error(error);
@@ -199,8 +217,18 @@ app.post("/api/login", async (req, res) => {
 });
 
 app.post("/api/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.json({ message: "Logged out successfully." });
+  req.session.destroy((error) => {
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
+    }
+    res.clearCookie(SESSION_COOKIE_NAME, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: IS_PRODUCTION,
+      path: "/",
+    });
+    return res.json({ message: "Logged out successfully." });
   });
 });
 
@@ -232,9 +260,7 @@ app.get("/api/patients/me", async (req, res) => {
     return res.json({ ok: true, patient: rows[0] });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -243,8 +269,9 @@ app.put("/api/patients/me", async (req, res) => {
     return res.status(401).json({ error: "Not logged in" });
   }
 
-  const conn = await pool.getConnection();
+  let conn;
   try {
+    conn = await pool.getConnection();
     const body = req.body || {};
 
     // first_name, last_name, and contact_number now live on `users`,
@@ -276,7 +303,6 @@ app.put("/api/patients/me", async (req, res) => {
     if (!blood_type) missing.push("blood_type");
 
     if (missing.length) {
-      conn.release();
       return res
         .status(400)
         .json({ ok: false, error: `Missing field(s): ${missing.join(", ")}` });
@@ -284,7 +310,6 @@ app.put("/api/patients/me", async (req, res) => {
 
     const normalizedGender = gender.toLowerCase();
     if (!["male", "female"].includes(normalizedGender)) {
-      conn.release();
       return res.status(400).json({ ok: false, error: "Invalid gender." });
     }
 
@@ -360,15 +385,15 @@ app.put("/api/patients/me", async (req, res) => {
     await conn.commit();
     return res.json({ ok: true, message: "Profile saved successfully." });
   } catch (err) {
-    try {
-      await conn.rollback();
-    } catch (_) {}
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (_) {}
+    }
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   } finally {
-    conn.release();
+    if (conn) conn.release();
   }
 });
 
@@ -461,9 +486,7 @@ app.post("/api/patients", async (req, res) => {
     return res.json({ ok: true, id: result.insertId });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -542,9 +565,7 @@ app.post("/api/staff", async (req, res) => {
     return res.json({ ok: true, staff_id: result.insertId });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -556,8 +577,9 @@ app.post("/api/doctors", async (req, res) => {
     return res.status(403).json({ error: "Forbidden" });
   }
 
-  const conn = await pool.getConnection();
+  let conn;
   try {
+    conn = await pool.getConnection();
     await conn.beginTransaction();
 
     const body = req.body || {};
@@ -634,15 +656,15 @@ app.post("/api/doctors", async (req, res) => {
     await conn.commit();
     return res.json({ ok: true, doctor_id: dentistResult.insertId });
   } catch (err) {
-    try {
-      await conn.rollback();
-    } catch (_) {}
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (_) {}
+    }
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   } finally {
-    conn.release();
+    if (conn) conn.release();
   }
 });
 
@@ -725,9 +747,7 @@ app.post("/api/dentist-schedule", async (req, res) => {
     return res.status(201).json({ ok: true, schedule_id: result.insertId });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -782,7 +802,7 @@ app.get("/api/appointments", async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: err?.message || "Database error" });
+    return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -830,12 +850,13 @@ app.post("/api/appointments", async (req, res) => {
     const appointment_status = requireField(body, "status");
     const reason_for_visit = requireField(body, "reason") || null;
     const dentist_id_raw = requireField(body, "dentist_id");
-    const dentist_id = dentist_id_raw ? parseInt(dentist_id_raw, 10) : null;
+    const dentist_id = dentist_id_raw ? Number(dentist_id_raw) : null;
 
     const missing = [];
     if (!appointment_date) missing.push("appointment_date");
     if (!appointment_time) missing.push("appointment_time");
     if (!appointment_type) missing.push("appointment_type");
+    if (!dentist_id_raw) missing.push("dentist_id");
     if (!appointment_status) missing.push("status");
 
     if (missing.length) {
@@ -845,18 +866,16 @@ app.post("/api/appointments", async (req, res) => {
       });
     }
 
-    if (dentist_id_raw && !dentist_id) {
+    if (!Number.isInteger(dentist_id) || dentist_id <= 0) {
       return res.status(400).json({ ok: false, error: "Invalid dentist_id." });
     }
 
-    if (dentist_id) {
-      const [dentists] = await pool.execute(
-        "SELECT dentist_id FROM dentist WHERE dentist_id = ?",
-        [dentist_id],
-      );
-      if (!dentists.length) {
-        return res.status(404).json({ ok: false, error: "Dentist not found." });
-      }
+    const [dentists] = await pool.execute(
+      "SELECT dentist_id FROM dentist WHERE dentist_id = ?",
+      [dentist_id],
+    );
+    if (!dentists.length) {
+      return res.status(404).json({ ok: false, error: "Dentist not found." });
     }
 
     const validTypes = [
@@ -913,9 +932,7 @@ app.post("/api/appointments", async (req, res) => {
     return res.status(201).json({ ok: true, id: result.insertId });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -991,9 +1008,7 @@ app.post("/api/appointments/:id/cancel", async (req, res) => {
     return res.json({ ok: true, message: "Appointment cancelled." });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1070,9 +1085,7 @@ app.patch("/api/appointments/:id/status", async (req, res) => {
     return res.json({ ok: true, message: "Appointment status updated." });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1100,14 +1113,29 @@ app.get("/api/dashboard/stats", async (req, res) => {
        WHERE appointment_status = 'scheduled'`,
     );
 
+    const [[{ outstanding_balance }]] = await pool.execute(
+      `SELECT COALESCE(
+         SUM(GREATEST(b.total_amount - COALESCE(payment_totals.amount_paid, 0), 0)),
+         0
+       ) AS outstanding_balance
+       FROM billing b
+       LEFT JOIN (
+         SELECT billing_id, SUM(amount_paid) AS amount_paid
+         FROM payments
+         WHERE payment_status = 'completed'
+         GROUP BY billing_id
+       ) payment_totals ON payment_totals.billing_id = b.billing_id`,
+    );
+
     return res.json({
       total_patients,
       appointments_today,
       pending_review,
+      outstanding_balance,
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: err?.message || "Database error" });
+    return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1139,7 +1167,7 @@ app.get("/api/dashboard/schedule", async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: err?.message || "Database error" });
+    return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1221,9 +1249,7 @@ app.get("/api/audit-logs", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1250,9 +1276,7 @@ app.get("/api/audit-logs/:id", async (req, res) => {
     return res.json({ ok: true, log: rows[0] });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1268,7 +1292,6 @@ app.get("/api/billings", async (req, res) => {
   }
 
   try {
-    await syncPaidBillingStatuses();
     const search = `%${q}%`;
     const [rows] = await pool.execute(
       `SELECT
@@ -1298,9 +1321,7 @@ app.get("/api/billings", async (req, res) => {
     return res.json({ ok: true, billings: rows });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1331,9 +1352,7 @@ app.get("/api/billing/patients/:patientId/treatments", async (req, res) => {
     return res.json({ ok: true, treatments: rows });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1432,9 +1451,7 @@ app.post("/api/billings", async (req, res) => {
       });
     }
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1447,7 +1464,6 @@ app.get("/api/billings/:id", async (req, res) => {
   }
 
   try {
-    await syncPaidBillingStatuses(billingId);
     const [billingRows] = await pool.execute(
       `SELECT
          b.billing_id,
@@ -1512,9 +1528,7 @@ app.get("/api/billings/:id", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1621,9 +1635,7 @@ app.patch("/api/billings/:id", async (req, res) => {
   } catch (err) {
     if (conn) await conn.rollback();
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   } finally {
     if (conn) conn.release();
   }
@@ -1779,9 +1791,147 @@ app.post("/api/billings/:id/payments", async (req, res) => {
   } catch (err) {
     if (conn) await conn.rollback();
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.patch("/api/payments/:id/status", async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const paymentId = Number.parseInt(req.params.id, 10);
+  const paymentStatus = (
+    requireField(req.body, "payment_status") || ""
+  ).toLowerCase();
+  const billingStatus = (
+    requireField(req.body, "billing_status") || ""
+  ).toLowerCase();
+
+  if (!paymentId) {
+    return res.status(400).json({ ok: false, error: "Invalid payment ID." });
+  }
+  if (!["completed", "failed"].includes(paymentStatus)) {
+    return res.status(400).json({
+      ok: false,
+      error: "A pending payment can only be completed or failed.",
+    });
+  }
+  if (!BILLING_STATUSES.includes(billingStatus)) {
+    return res.status(400).json({
+      ok: false,
+      error: "Please select the billing status after the payment update.",
+    });
+  }
+
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const [paymentLookup] = await conn.execute(
+      "SELECT billing_id FROM payments WHERE payment_id = ?",
+      [paymentId],
+    );
+    if (!paymentLookup.length) {
+      await conn.rollback();
+      return res.status(404).json({ ok: false, error: "Payment not found." });
+    }
+    const billingId = paymentLookup[0].billing_id;
+
+    const [billingRows] = await conn.execute(
+      `SELECT total_amount, billing_status
+       FROM billing
+       WHERE billing_id = ?
+       FOR UPDATE`,
+      [billingId],
+    );
+    if (!billingRows.length) {
+      await conn.rollback();
+      return res
+        .status(404)
+        .json({ ok: false, error: "Billing statement not found." });
+    }
+
+    const [paymentRows] = await conn.execute(
+      `SELECT billing_id, amount_paid, payment_status, reference_number
+       FROM payments
+       WHERE payment_id = ? AND billing_id = ?
+       FOR UPDATE`,
+      [paymentId, billingId],
+    );
+    if (!paymentRows.length) {
+      await conn.rollback();
+      return res.status(404).json({ ok: false, error: "Payment not found." });
+    }
+    const payment = paymentRows[0];
+    if (payment.payment_status !== "pending") {
+      await conn.rollback();
+      return res.status(409).json({
+        ok: false,
+        error: "Only pending payments can have their status updated.",
+      });
+    }
+
+    const [[paymentTotal]] = await conn.execute(
+      `SELECT COALESCE(SUM(amount_paid), 0) AS amount_paid
+       FROM payments
+       WHERE billing_id = ? AND payment_status = 'completed'`,
+      [billingId],
+    );
+    const newPaidTotal =
+      Number(paymentTotal.amount_paid) +
+      (paymentStatus === "completed" ? Number(payment.amount_paid) : 0);
+    const totalAmount = Number(billingRows[0].total_amount);
+    if (newPaidTotal - totalAmount > 0.005) {
+      await conn.rollback();
+      return res.status(400).json({
+        ok: false,
+        error: "Completing this payment would exceed the remaining balance.",
+      });
+    }
+
+    const effectiveBillingStatus = amountsEqual(newPaidTotal, totalAmount)
+      ? "paid"
+      : billingStatus;
+    await conn.execute(
+      "UPDATE payments SET payment_status = ? WHERE payment_id = ?",
+      [paymentStatus, paymentId],
+    );
+    await conn.execute(
+      "UPDATE billing SET billing_status = ? WHERE billing_id = ?",
+      [effectiveBillingStatus, billingId],
+    );
+    await createAuditLog(conn, req, {
+      action: "UPDATE_PAYMENT_STATUS",
+      entityType: "payment",
+      entityId: paymentId,
+      description: `Changed payment ${payment.reference_number || `#${paymentId}`} status from pending to ${paymentStatus}`,
+      oldValues: {
+        billing_id: billingId,
+        payment_status: payment.payment_status,
+        billing_status: billingRows[0].billing_status,
+      },
+      newValues: {
+        billing_id: billingId,
+        payment_status: paymentStatus,
+        billing_status: effectiveBillingStatus,
+      },
+    });
+    await conn.commit();
+
+    return res.json({
+      ok: true,
+      message: "Payment status updated.",
+      payment_status: paymentStatus,
+      billing_status: effectiveBillingStatus,
+      amount_paid: newPaidTotal,
+      balance: Math.max(totalAmount - newPaidTotal, 0),
+    });
+  } catch (err) {
+    if (conn) await conn.rollback();
+    console.error(err);
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   } finally {
     if (conn) conn.release();
   }
@@ -1829,7 +1979,7 @@ app.get("/api/admin/users/search", async (req, res) => {
     );
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: err?.message || "Database error" });
+    return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1863,7 +2013,7 @@ app.get("/api/patients/search", async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: err?.message || "Database error" });
+    return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1909,7 +2059,7 @@ app.get("/api/patients/:id", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: err?.message || "Database error" });
+    return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1927,7 +2077,7 @@ app.get("/api/dentists", async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: err?.message || "Database error" });
+    return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1952,7 +2102,7 @@ app.get("/api/dentists/search", async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: err?.message || "Database error" });
+    return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -1990,9 +2140,7 @@ app.get("/api/appointments/patient/:patientId", async (req, res) => {
     return res.json({ ok: true, appointments: rows });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -2028,12 +2176,16 @@ app.get("/api/dental-records/patient/:patientId", async (req, res) => {
        FROM tooth_chart tc
        JOIN dental_records dr ON dr.dental_record_id = tc.dental_record_id
        WHERE dr.patient_id = ?
-       ORDER BY tc.recorded_at DESC`,
+       ORDER BY tc.recorded_at DESC, tc.tooth_chart_id DESC`,
       [patientId],
     );
     const tooth_chart = {};
     toothRows.forEach((row) => {
-      tooth_chart[row.tooth_number] = row.condition_status;
+      if (
+        !Object.prototype.hasOwnProperty.call(tooth_chart, row.tooth_number)
+      ) {
+        tooth_chart[row.tooth_number] = row.condition_status;
+      }
     });
 
     const [vitalsRows] = await pool.execute(
@@ -2109,9 +2261,7 @@ app.get("/api/dental-records/patient/:patientId", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -2245,9 +2395,7 @@ app.put("/api/dental-records/:id", async (req, res) => {
     return res.json({ ok: true, message: "Treatment updated successfully." });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -2424,9 +2572,7 @@ app.post("/api/dental-records", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -2519,9 +2665,7 @@ app.post("/api/patient-vitals", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -2612,9 +2756,7 @@ app.put("/api/tooth-chart", async (req, res) => {
     return res.json({ ok: true, tooth_number, condition_status });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -2662,7 +2804,7 @@ app.get("/api/admin/users/summary", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: err?.message || "Database error" });
+    return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -2797,9 +2939,7 @@ app.post("/api/admin/users/promote", async (req, res) => {
     return res.json({ ok: true, staff_id: result.insertId, role: "staff" });
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err?.message || "Database error" });
+    return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
   }
 });
 
@@ -2849,6 +2989,12 @@ app.get("/js/adminPage.js", (req, res) => {
   if (!req.session.userId) return res.status(401).send("Unauthorized");
   if (req.session.role !== "admin") return res.status(403).send("Forbidden");
   res.sendFile(path.join(__dirname, "protected", "js", "adminPage.js"));
+});
+
+app.use((error, req, res, next) => {
+  console.error(error);
+  if (res.headersSent) return next(error);
+  return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
 });
 
 app.listen(PORT, () => {

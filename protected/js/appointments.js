@@ -73,7 +73,7 @@ function escapeHtml(value) {
 }
 
 function getCancellableAppointments(appointments) {
-  const activeStatuses = new Set(["scheduled", "confirmed", "pending"]);
+  const activeStatuses = new Set(["scheduled"]);
   return (appointments || []).filter((appt) => {
     const status = String(appt.appointment_status || "").toLowerCase();
     return activeStatuses.has(status);
@@ -85,7 +85,7 @@ function renderCancelAppointmentList(appointments, container) {
 
   if (!cancellable.length) {
     container.innerHTML =
-      '<p style="color:#666;">No active or pending appointments to cancel.</p>';
+      '<p style="color:#666;">No scheduled appointments to cancel.</p>';
     return;
   }
 
@@ -97,9 +97,9 @@ function renderCancelAppointmentList(appointments, container) {
             day: "numeric",
             year: "numeric",
           })
-        : "Pending date";
+        : "Date unavailable";
       const timeLabel = formatTimeLabel(appt.appointment_time);
-      const status = escapeHtml(appt.appointment_status || "pending");
+      const status = escapeHtml(appt.appointment_status || "scheduled");
       const title = escapeHtml(
         `${appt.first_name || ""} ${appt.last_name || ""}`.trim() ||
           `Appointment #${appt.appointment_id}`,
@@ -109,12 +109,12 @@ function renderCancelAppointmentList(appointments, container) {
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #eee;">
           <div>
             <div style="font-weight:700;">${title}</div>
-            <div style="font-size:14px;color:#666;">${dateLabel}${timeLabel ? ` • ${timeLabel}` : ""}</div>
+            <div style="font-size:14px;color:#666;">${escapeHtml(dateLabel)}${timeLabel ? ` • ${escapeHtml(timeLabel)}` : ""}</div>
             <div style="font-size:13px;color:#888;">Status: ${status}</div>
           </div>
           <button
             type="button"
-            data-appointment-id="${appt.appointment_id}"
+            data-appointment-id="${escapeHtml(appt.appointment_id)}"
             data-appointment-label="${escapeHtml(`Appointment #${appt.appointment_id} (${dateLabel}${timeLabel ? ` ${timeLabel}` : ""})`)}"
             style="padding:8px 12px;border:1px solid #c0392b;background:#fff;color:#c0392b;border-radius:6px;cursor:pointer;"
           >
@@ -301,7 +301,7 @@ async function populateDentistDropdown() {
     const select = document.querySelector("select[name='dentist_id']");
     if (select) {
       const currentValue = select.value;
-      select.innerHTML = '<option value="">Select Doctor (Optional)</option>';
+      select.innerHTML = '<option value="">Select Doctor</option>';
       dentists.forEach((dentist) => {
         const option = document.createElement("option");
         option.value = dentist.dentist_id;
@@ -353,6 +353,7 @@ async function handleAddSubmit(event) {
   if (!payload.appointment_date || !payload.appointment_time)
     missing.push("appointment_date");
   if (!payload.appointment_type) missing.push("appointment_type");
+  if (!payload.dentist_id) missing.push("dentist_id");
   if (!payload.status) missing.push("status");
 
   if (missing.length) {
@@ -378,10 +379,10 @@ async function handleAddSubmit(event) {
 
     resultBox.innerHTML = `
       <h2>Appointment saved successfully!</h2>
-      <p>Appointment ID: ${data.id}</p>
-      <p>Date: ${payload.appointment_date}</p>
-      <p>Time: ${payload.appointment_time}</p>
-      <p>Status: ${payload.status}</p>
+      <p>Appointment ID: ${escapeHtml(data.id)}</p>
+      <p>Date: ${escapeHtml(payload.appointment_date)}</p>
+      <p>Time: ${escapeHtml(payload.appointment_time)}</p>
+      <p>Status: ${escapeHtml(payload.status)}</p>
       <button type="button" id="add-back-success">Back to options</button>
     `;
     document
@@ -389,7 +390,7 @@ async function handleAddSubmit(event) {
       .addEventListener("click", () => showView("view-choose"));
     form.reset();
   } catch (err) {
-    resultBox.innerHTML = `<h2>Error</h2><p>${err?.message || "Unknown error"}</p>`;
+    resultBox.innerHTML = `<h2>Error</h2><p>${escapeHtml(err?.message || "Unknown error")}</p>`;
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }
@@ -438,7 +439,7 @@ async function handleCancelSubmit(event) {
     closeCancelModal();
     resultBox.innerHTML = `
       <h2>Appointment Cancelled</h2>
-      <p>Appointment ID: ${appointmentId}</p>
+      <p>Appointment ID: ${escapeHtml(appointmentId)}</p>
       <p>Reason: ${escapeHtml(cancelReason)}</p>
       <button type="button" id="cancel-back-success">Back to options</button>
     `;
@@ -451,7 +452,7 @@ async function handleCancelSubmit(event) {
       .getElementById("cancel-back-success")
       ?.addEventListener("click", () => showView("view-choose"));
   } catch (err) {
-    resultBox.innerHTML = `<h2>Error</h2><p>${err?.message || "Unknown error"}</p>`;
+    resultBox.innerHTML = `<h2>Error</h2><p>${escapeHtml(err?.message || "Unknown error")}</p>`;
   } finally {
     if (confirmBtn) confirmBtn.disabled = false;
   }
@@ -489,7 +490,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const appointments = await loadAppointments();
       renderAppointmentsCalendar(appointments, resultBox);
     } catch (err) {
-      resultBox.innerHTML = `<h2>Error</h2><p>${err?.message || "Unable to load appointments."}</p>`;
+      resultBox.innerHTML = `<h2>Error</h2><p>${escapeHtml(err?.message || "Unable to load appointments.")}</p>`;
     }
   });
 
@@ -507,7 +508,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderCancelAppointmentList(appointments, listBox);
     } catch (err) {
       if (listBox) {
-        listBox.innerHTML = `<h2>Error</h2><p>${err?.message || "Unable to load appointments."}</p>`;
+        listBox.innerHTML = `<h2>Error</h2><p>${escapeHtml(err?.message || "Unable to load appointments.")}</p>`;
       }
     }
   });
@@ -544,7 +545,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       loadAppointments()
         .then((appts) => renderAppointmentsCalendar(appts, resultBox))
         .catch((err) => {
-          resultBox.innerHTML = `<h2>Error</h2><p>${err?.message || "Unable to load appointments."}</p>`;
+          resultBox.innerHTML = `<h2>Error</h2><p>${escapeHtml(err?.message || "Unable to load appointments.")}</p>`;
         });
     }
   }

@@ -76,20 +76,46 @@ async function loadAppointments() {
           day: "numeric",
           year: "numeric",
         });
-        dateHeader.innerHTML = `<td colspan="5" style="font-weight: 700; font-size: 16px; padding: 12px 0; border-top: 2px solid #333; background: #f5f5f5;">${dateLabel}</td>`;
+        const dateCell = document.createElement("td");
+        dateCell.colSpan = 5;
+        dateCell.style.cssText =
+          "font-weight:700;font-size:16px;padding:12px 0;border-top:2px solid #333;background:#f5f5f5;";
+        dateCell.textContent = dateLabel;
+        dateHeader.appendChild(dateCell);
         body.appendChild(dateHeader);
       }
 
       const tr = document.createElement("tr");
       tr.dataset.id = appt.appointment_id;
-
-      tr.innerHTML = `
-        <td>${formatDateTime(appt.appointment_date, appt.appointment_time)}</td>
-        <td>${appt.doctor_name || "—"}</td>
-        <td>${appt.reason_for_visit || appt.appointment_type}</td>
-        <td><span class="status status-${appt.appointment_status}">${statusLabel(appt.appointment_status)}</span></td>
-        <td><button class="cancel-btn" onclick="cancelAppointment(${appt.appointment_id}, this)">Cancel</button></td>
-      `;
+      const dateTimeCell = document.createElement("td");
+      dateTimeCell.textContent = formatDateTime(
+        appt.appointment_date,
+        appt.appointment_time,
+      );
+      const doctorCell = document.createElement("td");
+      doctorCell.textContent = appt.doctor_name || "—";
+      const reasonCell = document.createElement("td");
+      reasonCell.textContent = appt.reason_for_visit || appt.appointment_type;
+      const statusCell = document.createElement("td");
+      const status = ["scheduled", "completed", "cancelled"].includes(
+        appt.appointment_status,
+      )
+        ? appt.appointment_status
+        : "scheduled";
+      const statusBadge = document.createElement("span");
+      statusBadge.className = `status status-${status}`;
+      statusBadge.textContent = statusLabel(status);
+      statusCell.appendChild(statusBadge);
+      const actionCell = document.createElement("td");
+      const cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.className = "cancel-btn";
+      cancelButton.textContent = "Cancel";
+      cancelButton.addEventListener("click", () =>
+        cancelAppointment(appt.appointment_id, cancelButton),
+      );
+      actionCell.appendChild(cancelButton);
+      tr.append(dateTimeCell, doctorCell, reasonCell, statusCell, actionCell);
       body.appendChild(tr);
     });
   } catch (err) {

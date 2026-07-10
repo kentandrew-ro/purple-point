@@ -281,6 +281,13 @@
             </div>
 
             <div class="field">
+              <label for="appointment_dentist_id">Doctor</label>
+              <select id="appointment_dentist_id" name="dentist_id" required>
+                <option value="">Select Doctor</option>
+              </select>
+            </div>
+
+            <div class="field">
               <label for="appointment_status">Appointment Status</label>
               <select
                 id="appointment_status"
@@ -289,8 +296,6 @@
               >
                 <option value="">Select Appointment Status</option>
                 <option value="scheduled">Scheduled</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="pending">Pending</option>
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
               </select>
@@ -825,6 +830,7 @@
                 <th>External Reference</th>
                 <th>Recorded By</th>
                 <th>Notes</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody id="billing-payment-history"></tbody>
@@ -924,6 +930,7 @@
           <option value="CREATE_BILLING">Create billing</option>
           <option value="UPDATE_BILLING">Update billing</option>
           <option value="RECORD_PAYMENT">Record payment</option>
+          <option value="UPDATE_PAYMENT_STATUS">Update payment status</option>
           <option value="PROMOTE_USER">Promote user</option>
           <option value="UPDATE_PATIENT">Update patient</option>
         </select>
@@ -1086,6 +1093,7 @@
                 ><input
                   id="specialization"
                   type="text"
+                  maxlength="100"
                   placeholder="Specialization"
                 />
               </div>
@@ -1093,8 +1101,9 @@
                 <label for="license_number">License Number</label
                 ><input
                   id="license_number"
-                  type="number"
-                  placeholder="License Number"
+                  type="text"
+                  maxlength="50"
+                  placeholder="License number, including letters or hyphens"
                 />
               </div>
             </div>

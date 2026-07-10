@@ -30,12 +30,18 @@ async function loadStats() {
       data.appointments_today ?? "--";
     document.getElementById("stat-pending-review").textContent =
       data.pending_review ?? "--";
+    document.getElementById("stat-outstanding-balances").textContent =
+      new Intl.NumberFormat("en-PH", {
+        style: "currency",
+        currency: "PHP",
+      }).format(Number(data.outstanding_balance) || 0);
   } catch (err) {
     console.error(err);
     [
       "stat-total-patients",
       "stat-appointments-today",
       "stat-pending-review",
+      "stat-outstanding-balances",
     ].forEach((id) => {
       document.getElementById(id).textContent = "!";
     });
@@ -61,11 +67,11 @@ async function loadSchedule() {
       .map(
         (row) => `
         <tr>
-          <td>${row.time}</td>
-          <td>${row.patient}</td>
+          <td>${escapeHtml(row.time)}</td>
+          <td>${escapeHtml(row.patient)}</td>
           <td>${escapeHtml(row.doctor_name || "--")}</td>
-          <td>${row.reason}</td>
-          <td><span class="badge">${row.status.toUpperCase()}</span></td>
+          <td>${escapeHtml(row.reason)}</td>
+          <td><span class="badge">${escapeHtml(String(row.status || "").toUpperCase())}</span></td>
         </tr>`,
       )
       .join("");
@@ -84,9 +90,7 @@ loadStats();
 loadSchedule();
 
 const STATUS_COLORS = {
-  confirmed: "#c8e6c9",
   completed: "#bbdefb",
-  pending: "#fff9c4",
   scheduled: "#e1bee7",
   cancelled: "#ffcdd2",
 };
@@ -239,7 +243,7 @@ async function loadAdminAppointments(baseDate) {
     const appointments = await res.json();
     renderAdminCalendar(appointments, container, baseDate || new Date());
   } catch (err) {
-    container.innerHTML = `<p style="color:red;">Error: ${err.message}</p>`;
+    container.textContent = `Error: ${err.message}`;
   }
 }
 
@@ -257,7 +261,7 @@ function openApptStatusModal(appt, onSaved) {
     : "";
   const timeLabel = apptFormatTime(appt.appointment_time);
   const currentStatus = (appt.appointment_status || "").toLowerCase();
-  const statuses = ["scheduled", "confirmed", "completed", "cancelled"];
+  const statuses = ["scheduled", "completed", "cancelled"];
 
   const overlay = document.createElement("div");
   overlay.id = "appt-status-modal-overlay";
@@ -406,7 +410,7 @@ function renderUserSuggestions(users) {
   list.innerHTML = users
     .map(
       (user) =>
-        `<div class="suggestion-item" data-user-id="${user.user_id}">${formatUserLabel(user)}</div>`,
+        `<div class="suggestion-item" data-user-id="${escapeHtml(user.user_id)}">${escapeHtml(formatUserLabel(user))}</div>`,
     )
     .join("");
 }
@@ -422,7 +426,7 @@ function renderPatientSuggestions(patients) {
   list.innerHTML = patients
     .map(
       (p) =>
-        `<div class="suggestion-item" data-patient-id="${p.patient_id}">${p.first_name} ${p.last_name} · ${p.email || p.contact_number || ""}</div>`,
+        `<div class="suggestion-item" data-patient-id="${escapeHtml(p.patient_id)}">${escapeHtml(p.first_name)} ${escapeHtml(p.last_name)} · ${escapeHtml(p.email || p.contact_number || "")}</div>`,
     )
     .join("");
 }
@@ -447,7 +451,7 @@ function renderPatientInfoSuggestions(patients) {
   list.innerHTML = patients
     .map(
       (p) =>
-        `<div class="suggestion-item" data-patient-id="${p.patient_id}">${p.first_name} ${p.last_name} · ${p.email || p.contact_number || ""}</div>`,
+        `<div class="suggestion-item" data-patient-id="${escapeHtml(p.patient_id)}">${escapeHtml(p.first_name)} ${escapeHtml(p.last_name)} · ${escapeHtml(p.email || p.contact_number || "")}</div>`,
     )
     .join("");
 }
@@ -512,7 +516,7 @@ function renderDentistSuggestions(dentists, target) {
   list.innerHTML = dentists
     .map(
       (d) =>
-        `<div class="suggestion-item" data-dentist-id="${d.dentist_id}">${d.first_name} ${d.last_name} · ${d.specialization || d.email || ""}</div>`,
+        `<div class="suggestion-item" data-dentist-id="${escapeHtml(d.dentist_id)}">${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)} · ${escapeHtml(d.specialization || d.email || "")}</div>`,
     )
     .join("");
 }
@@ -691,7 +695,7 @@ async function promoteSelectedUser() {
 
     showResult(
       resultBox,
-      `<h3>User promoted successfully!</h3><p>New ${data.role} profile created: ID ${data.doctor_id || data.staff_id}.</p>`,
+      `User promoted successfully. New ${data.role} profile created: ID ${data.doctor_id || data.staff_id}.`,
     );
     loadDoctorStaffSummaries();
     document.getElementById("user-search").value = "";
@@ -701,10 +705,7 @@ async function promoteSelectedUser() {
     document.getElementById("promote-role").value = "";
     showRoleSpecificFields();
   } catch (err) {
-    showResult(
-      resultBox,
-      `<h3 style="color:red;">Error</h3><p>${err?.message || "Unknown error"}</p>`,
-    );
+    showResult(resultBox, `Error: ${err?.message || "Unknown error"}`);
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }
@@ -732,14 +733,20 @@ async function loadDoctorStaffSummaries() {
       doctorList.innerHTML =
         data.doctors?.length > 0
           ? data.doctors
-              .map((item) => `<div>${item.name} — ${item.specialization}</div>`)
+              .map(
+                (item) =>
+                  `<div>${escapeHtml(item.name)} — ${escapeHtml(item.specialization)} — License: ${escapeHtml(item.license_number)} — Hired: ${escapeHtml(item.hire_date || "Not recorded")}</div>`,
+              )
               .join("")
           : '<div style="color:#666;">No doctors yet.</div>';
     if (staffList)
       staffList.innerHTML =
         data.staff?.length > 0
           ? data.staff
-              .map((item) => `<div>${item.name} — ${item.shift_schedule}</div>`)
+              .map(
+                (item) =>
+                  `<div>${escapeHtml(item.name)} — ${escapeHtml(item.shift_schedule)}</div>`,
+              )
               .join("")
           : '<div style="color:#666;">No staff yet.</div>';
   } catch (err) {
@@ -784,9 +791,9 @@ function submitAppointmentForm(event) {
   console.error("handleAddSubmit is not defined");
 }
 
-function showResult(el, html) {
+function showResult(el, message) {
   if (!el) return;
-  el.innerHTML = html;
+  el.textContent = message;
 }
 
 async function submitClinicHoursForm(e) {
@@ -826,14 +833,11 @@ async function submitClinicHoursForm(e) {
 
     showResult(
       resultBox,
-      `<h3>Clinic hours saved successfully!</h3><p>Schedule ID: ${data.schedule_id ?? "N/A"}</p>`,
+      `Clinic hours saved successfully. Schedule ID: ${data.schedule_id ?? "N/A"}.`,
     );
     form.reset();
   } catch (err) {
-    showResult(
-      resultBox,
-      `<h3 style="color:red;">Error</h3><p>${err?.message || "Unknown error"}</p>`,
-    );
+    showResult(resultBox, `Error: ${err?.message || "Unknown error"}`);
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }
@@ -865,18 +869,14 @@ async function submitStaffForm(e) {
 
     showResult(
       resultBox,
-      `
-      <h3>Staff saved successfully!</h3>
-      <p>Staff ID: ${data.staff_id}</p>
-      <p>Inserted Staff User ID: ${data.user_id ?? "N/A"}</p>
-    `,
+      `Staff saved successfully. Staff ID: ${data.staff_id}. Inserted Staff User ID: ${data.user_id ?? "N/A"}.`,
     );
 
     form.reset();
   } catch (err) {
     showResult(
       resultBox,
-      `<h3 style="color:red;">Database Error</h3><p>${err?.message ? String(err.message) : "Unknown error"}</p>`,
+      `Error: ${err?.message ? String(err.message) : "Unknown error"}`,
     );
   } finally {
     if (submitBtn) submitBtn.disabled = false;
@@ -896,8 +896,7 @@ async function submitDoctorForm(e) {
     const payload = getFormPayload(form);
     payload.gender = genderNormalize(payload.gender);
     payload.employment_status = "Active";
-    payload.license_number =
-      payload.license_number === "" ? null : Number(payload.license_number);
+    payload.license_number = payload.license_number?.trim() || null;
 
     const res = await fetch("/api/doctors", {
       method: "POST",
@@ -912,17 +911,14 @@ async function submitDoctorForm(e) {
 
     showResult(
       resultBox,
-      `
-      <h3>Doctor saved successfully!</h3>
-      <p>Doctor ID: ${data.doctor_id ?? "N/A"}</p>
-    `,
+      `Doctor saved successfully. Doctor ID: ${data.doctor_id ?? "N/A"}.`,
     );
 
     form.reset();
   } catch (err) {
     showResult(
       resultBox,
-      `<h3 style="color:red;">Database Error</h3><p>${err?.message ? String(err.message) : "Unknown error"}</p>`,
+      `Error: ${err?.message ? String(err.message) : "Unknown error"}`,
     );
   } finally {
     if (submitBtn) submitBtn.disabled = false;
@@ -1155,7 +1151,7 @@ function renderDentalPatientSuggestions(patients) {
   list.innerHTML = patients
     .map(
       (p) =>
-        `<div class="suggestion-item" data-patient-id="${p.patient_id}">${escapeHtml(p.first_name)} ${escapeHtml(p.last_name)} · ${escapeHtml(p.email || p.contact_number || "")}</div>`,
+        `<div class="suggestion-item" data-patient-id="${escapeHtml(p.patient_id)}">${escapeHtml(p.first_name)} ${escapeHtml(p.last_name)} · ${escapeHtml(p.email || p.contact_number || "")}</div>`,
     )
     .join("");
 }
@@ -1178,10 +1174,13 @@ async function searchDentalPatients(query) {
 }
 
 function toothBox(num, status) {
-  const style = TOOTH_STATUS_STYLES[status] || TOOTH_STATUS_STYLES.healthy;
+  const normalizedStatus = TOOTH_STATUS_ORDER.includes(status)
+    ? status
+    : "healthy";
+  const style = TOOTH_STATUS_STYLES[normalizedStatus];
   return `
-    <div class="tooth-box" data-tooth="${num}" data-status="${status}"
-      title="Tooth ${num} — ${TOOTH_STATUS_LABELS[status] || "Healthy"} (click to change)"
+    <div class="tooth-box" data-tooth="${num}" data-status="${normalizedStatus}"
+      title="Tooth ${num} — ${TOOTH_STATUS_LABELS[normalizedStatus]} (click to change)"
       style="
         width:42px;
         text-align:center;
@@ -1855,17 +1854,42 @@ async function loadBillingTreatmentOptions(patientId) {
   }
 }
 
-function renderBillingPaymentHistory(payments) {
+function renderBillingPaymentHistory(payments, billingStatus) {
   const tbody = document.getElementById("billing-payment-history");
   if (!tbody) return;
   if (!payments?.length) {
-    tbody.innerHTML = '<tr><td colspan="8">No payments recorded.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9">No payments recorded.</td></tr>';
     return;
   }
 
   tbody.innerHTML = payments
-    .map(
-      (payment) => `
+    .map((payment) => {
+      const action =
+        payment.payment_status === "pending"
+          ? `
+            <label>
+              Payment status
+              <select class="billing-payment-status-edit">
+                <option value="">Select status</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+              </select>
+            </label>
+            <label>
+              Billing status
+              <select class="billing-status-after-payment-edit">
+                ${["unpaid", "partial", "paid"]
+                  .map(
+                    (status) =>
+                      `<option value="${status}"${status === billingStatus ? " selected" : ""}>${status}</option>`,
+                  )
+                  .join("")}
+              </select>
+            </label>
+            <button type="button" class="billing-payment-status-update" data-payment-id="${escapeHtml(payment.payment_id)}">Update</button>`
+          : "-";
+
+      return `
         <tr>
           <td>${escapeHtml(payment.payment_date)}</td>
           <td>${escapeHtml(formatPeso(payment.amount_paid))}</td>
@@ -1875,8 +1899,9 @@ function renderBillingPaymentHistory(payments) {
           <td>${escapeHtml(payment.external_reference || "-")}</td>
           <td>${escapeHtml(payment.recorded_by_name)}</td>
           <td>${escapeHtml(payment.notes || "-")}</td>
-        </tr>`,
-    )
+          <td>${action}</td>
+        </tr>`;
+    })
     .join("");
 }
 
@@ -1927,7 +1952,7 @@ async function openBillingStatement(billingId) {
       billing.billing_status;
     document.getElementById("billing-payment-external-reference").value = "";
     document.getElementById("billing-payment-notes").value = "";
-    renderBillingPaymentHistory(data.payments || []);
+    renderBillingPaymentHistory(data.payments || [], billing.billing_status);
 
     if (!dialog.open) dialog.showModal();
   } catch (err) {
@@ -1948,6 +1973,7 @@ function initBillingTab() {
   const patientResults = document.getElementById("billing-patient-results");
   const treatmentSelect = document.getElementById("billing-treatment-select");
   const viewDialog = document.getElementById("billing-view-dialog");
+  const paymentHistory = document.getElementById("billing-payment-history");
   const updateForm = document.getElementById("billing-update-form");
   const paymentForm = document.getElementById("billing-payment-form");
   const updateTotal = document.getElementById("billing-update-total");
@@ -2143,6 +2169,52 @@ function initBillingTab() {
           `Payment recorded. Reference: ${paymentResult.reference_number}`;
       } catch (err) {
         error.textContent = err.message;
+      }
+    });
+  }
+
+  if (paymentHistory) {
+    paymentHistory.addEventListener("click", async (event) => {
+      const button = event.target.closest(".billing-payment-status-update");
+      if (!button) return;
+
+      const row = button.closest("tr");
+      const paymentStatus = row?.querySelector(
+        ".billing-payment-status-edit",
+      )?.value;
+      const billingStatus = row?.querySelector(
+        ".billing-status-after-payment-edit",
+      )?.value;
+      const error = document.getElementById("billing-payment-error");
+      const billingId = document.getElementById("billing-update-id").value;
+      error.textContent = "";
+
+      if (!paymentStatus) {
+        error.textContent = "Please select the payment's new status.";
+        return;
+      }
+
+      button.disabled = true;
+      try {
+        await billingFetchJson(
+          `/api/payments/${encodeURIComponent(button.dataset.paymentId)}/status`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              payment_status: paymentStatus,
+              billing_status: billingStatus,
+            }),
+          },
+        );
+        await openBillingStatement(billingId);
+        await loadBillings();
+        await loadStats();
+        document.getElementById("billing-payment-error").textContent =
+          "Payment status updated.";
+      } catch (err) {
+        error.textContent = err.message;
+        button.disabled = false;
       }
     });
   }
