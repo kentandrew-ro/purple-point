@@ -1857,7 +1857,7 @@ function renderBillingPaymentHistory(payments) {
   const tbody = document.getElementById("billing-payment-history");
   if (!tbody) return;
   if (!payments?.length) {
-    tbody.innerHTML = '<tr><td colspan="7">No payments recorded.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8">No payments recorded.</td></tr>';
     return;
   }
 
@@ -1870,6 +1870,7 @@ function renderBillingPaymentHistory(payments) {
           <td>${escapeHtml(payment.payment_method)}</td>
           <td>${escapeHtml(payment.payment_status)}</td>
           <td>${escapeHtml(payment.reference_number || "-")}</td>
+          <td>${escapeHtml(payment.external_reference || "-")}</td>
           <td>${escapeHtml(payment.recorded_by_name)}</td>
           <td>${escapeHtml(payment.notes || "-")}</td>
         </tr>`,
@@ -1916,7 +1917,7 @@ async function openBillingStatement(billingId) {
     document.getElementById("billing-payment-status").value = "completed";
     document.getElementById("billing-payment-billing-status").value =
       billing.billing_status;
-    document.getElementById("billing-payment-reference").value = "";
+    document.getElementById("billing-payment-external-reference").value = "";
     document.getElementById("billing-payment-notes").value = "";
     renderBillingPaymentHistory(data.payments || []);
 
@@ -2081,8 +2082,8 @@ function initBillingTab() {
               billing_status: document.getElementById(
                 "billing-payment-billing-status",
               ).value,
-              reference_number: document.getElementById(
-                "billing-payment-reference",
+              external_reference: document.getElementById(
+                "billing-payment-external-reference",
               ).value,
               notes: document.getElementById("billing-payment-notes").value,
             }),

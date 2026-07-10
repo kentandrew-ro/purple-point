@@ -821,7 +821,8 @@
                 <th>Amount</th>
                 <th>Method</th>
                 <th>Payment Status</th>
-                <th>Reference</th>
+                <th>PurplePoint Reference</th>
+                <th>External Reference</th>
                 <th>Recorded By</th>
                 <th>Notes</th>
               </tr>
@@ -874,9 +875,17 @@
               </select>
             </p>
             <p>
-              <label for="billing-payment-reference">Reference number</label
+              The PurplePoint payment reference will be generated automatically.
+            </p>
+            <p>
+              <label for="billing-payment-external-reference"
+                >External reference</label
               ><br />
-              <input id="billing-payment-reference" maxlength="100" />
+              <input
+                id="billing-payment-external-reference"
+                maxlength="100"
+                placeholder="Optional GCash, bank, or card reference"
+              />
             </p>
             <p>
               <label for="billing-payment-notes">Notes</label><br />

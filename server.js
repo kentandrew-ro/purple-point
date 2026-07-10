@@ -1213,6 +1213,7 @@ app.get("/api/billings/:id", async (req, res) => {
          pay.payment_method,
          pay.payment_status,
          pay.reference_number,
+         pay.external_reference,
          pay.notes,
          COALESCE(CONCAT(u.first_name, ' ', u.last_name), 'Unknown') AS recorded_by_name
        FROM payments pay
@@ -1333,7 +1334,7 @@ app.post("/api/billings/:id/payments", async (req, res) => {
   const billingStatus = (
     requireField(req.body, "billing_status") || ""
   ).toLowerCase();
-  const referenceNumber = requireField(req.body, "reference_number");
+  const externalReference = requireField(req.body, "external_reference");
   const notes = requireField(req.body, "notes");
 
   if (!billingId) {
@@ -1364,10 +1365,10 @@ app.post("/api/billings/:id/payments", async (req, res) => {
       .status(400)
       .json({ ok: false, error: "Please select the billing status manually." });
   }
-  if (referenceNumber && referenceNumber.length > 100) {
+  if (externalReference && externalReference.length > 100) {
     return res
       .status(400)
-      .json({ ok: false, error: "Reference number is too long." });
+      .json({ ok: false, error: "External reference is too long." });
   }
   if (notes && notes.length > 255) {
     return res
@@ -1410,7 +1411,7 @@ app.post("/api/billings/:id/payments", async (req, res) => {
     const [result] = await conn.execute(
       `INSERT INTO payments
          (billing_id, payment_date, amount_paid, payment_method, payment_status,
-          reference_number, notes, recorded_by)
+          external_reference, notes, recorded_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         billingId,
@@ -1418,10 +1419,17 @@ app.post("/api/billings/:id/payments", async (req, res) => {
         amountPaid,
         paymentMethod,
         paymentStatus,
-        referenceNumber,
+        externalReference,
         notes,
         req.session.userId,
       ],
+    );
+    const referenceNumber = `PAY-${paymentDate.replace(/-/g, "")}-${String(
+      result.insertId,
+    ).padStart(6, "0")}`;
+    await conn.execute(
+      "UPDATE payments SET reference_number = ? WHERE payment_id = ?",
+      [referenceNumber, result.insertId],
     );
     await conn.execute(
       "UPDATE billing SET billing_status = ? WHERE billing_id = ?",
@@ -1433,6 +1441,7 @@ app.post("/api/billings/:id/payments", async (req, res) => {
       ok: true,
       message: "Payment recorded.",
       payment_id: result.insertId,
+      reference_number: referenceNumber,
     });
   } catch (err) {
     if (conn) await conn.rollback();
