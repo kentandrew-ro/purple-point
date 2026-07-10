@@ -175,3 +175,28 @@ CREATE TABLE payments (
   FOREIGN KEY (billing_id) REFERENCES billing(billing_id) ON DELETE CASCADE,
   FOREIGN KEY (recorded_by) REFERENCES users(user_id)
 );
+
+CREATE TABLE audit_logs (
+  audit_log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  actor_user_id INT,
+  actor_name_snapshot VARCHAR(150) NOT NULL,
+  actor_type_snapshot VARCHAR(30) NOT NULL,
+  action VARCHAR(50) NOT NULL,
+  entity_type VARCHAR(50) NOT NULL,
+  entity_id INT,
+  description VARCHAR(255) NOT NULL,
+  old_values LONGTEXT,
+  new_values LONGTEXT,
+  ip_address VARCHAR(45),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT chk_audit_old_values_json
+    CHECK (old_values IS NULL OR JSON_VALID(old_values)),
+  CONSTRAINT chk_audit_new_values_json
+    CHECK (new_values IS NULL OR JSON_VALID(new_values)),
+  KEY idx_audit_created_at (created_at),
+  KEY idx_audit_actor (actor_user_id),
+  KEY idx_audit_action (action),
+  KEY idx_audit_entity (entity_type, entity_id),
+  CONSTRAINT fk_audit_actor
+    FOREIGN KEY (actor_user_id) REFERENCES users(user_id) ON DELETE SET NULL
+);

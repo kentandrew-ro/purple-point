@@ -5,6 +5,7 @@ function showTab(name) {
   const tab = document.getElementById("tab-" + name);
   if (tab) tab.style.display = "block";
   if (name === "billing") loadBillings();
+  if (name === "audit-logs") loadAuditLogs();
 }
 
 const now = new Date();
@@ -1110,6 +1111,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadDoctorStaffSummaries();
   initDentalRecordsTab();
   initBillingTab();
+  initAuditLogsTab();
 });
 
 const TOOTH_STATUS_ORDER = [
@@ -1911,6 +1913,12 @@ async function openBillingStatement(billingId) {
     ).toFixed(2);
     document.getElementById("billing-update-status").value =
       billing.billing_status;
+    document.getElementById("billing-update-form").dataset.amountPaid =
+      billing.amount_paid;
+    document.getElementById("billing-payment-form").dataset.amountPaid =
+      billing.amount_paid;
+    document.getElementById("billing-payment-form").dataset.totalAmount =
+      billing.total_amount;
     document.getElementById("billing-payment-date").value = billingToday();
     document.getElementById("billing-payment-amount").value = "";
     document.getElementById("billing-payment-method").value = "cash";
@@ -1942,6 +1950,46 @@ function initBillingTab() {
   const viewDialog = document.getElementById("billing-view-dialog");
   const updateForm = document.getElementById("billing-update-form");
   const paymentForm = document.getElementById("billing-payment-form");
+  const updateTotal = document.getElementById("billing-update-total");
+  const updateStatus = document.getElementById("billing-update-status");
+  const paymentAmount = document.getElementById("billing-payment-amount");
+  const paymentStatus = document.getElementById("billing-payment-status");
+  const paymentBillingStatus = document.getElementById(
+    "billing-payment-billing-status",
+  );
+
+  function valuesMatch(first, second) {
+    return Math.abs(Number(first) - Number(second)) < 0.005;
+  }
+
+  function syncUpdatedStatementStatus() {
+    if (!updateForm || !updateTotal || !updateStatus) return;
+    if (valuesMatch(updateForm.dataset.amountPaid || 0, updateTotal.value)) {
+      updateStatus.value = "paid";
+    }
+  }
+
+  function syncPaymentStatementStatus() {
+    if (
+      !paymentForm ||
+      !paymentAmount ||
+      !paymentStatus ||
+      !paymentBillingStatus
+    )
+      return;
+    const completedAmount =
+      Number(paymentForm.dataset.amountPaid || 0) +
+      (paymentStatus.value === "completed"
+        ? Number(paymentAmount.value || 0)
+        : 0);
+    if (valuesMatch(completedAmount, paymentForm.dataset.totalAmount || 0)) {
+      paymentBillingStatus.value = "paid";
+    }
+  }
+
+  updateTotal?.addEventListener("input", syncUpdatedStatementStatus);
+  paymentAmount?.addEventListener("input", syncPaymentStatementStatus);
+  paymentStatus?.addEventListener("change", syncPaymentStatementStatus);
 
   if (search) {
     search.addEventListener("input", debounce(loadBillings, 250));
@@ -2103,5 +2151,198 @@ function initBillingTab() {
     .getElementById("billing-view-close")
     ?.addEventListener("click", () => {
       viewDialog.close();
+    });
+}
+
+let auditCurrentPage = 1;
+let auditTotalPages = 1;
+
+function auditLabel(value) {
+  return String(value || "")
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function auditDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(String(value).replace(" ", "T"));
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+}
+
+function auditValueTable(rawValue) {
+  if (!rawValue) return "<p>No values recorded.</p>";
+  let value = rawValue;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch (_) {
+      return `<p>${escapeHtml(value)}</p>`;
+    }
+  }
+  if (!value || typeof value !== "object" || !Object.keys(value).length) {
+    return "<p>No values recorded.</p>";
+  }
+  return `
+    <table>
+      <thead><tr><th>Field</th><th>Value</th></tr></thead>
+      <tbody>
+        ${Object.entries(value)
+          .map(([key, item]) => {
+            const display =
+              item && typeof item === "object"
+                ? JSON.stringify(item)
+                : String(item ?? "-");
+            return `<tr><td>${escapeHtml(auditLabel(key))}</td><td>${escapeHtml(display)}</td></tr>`;
+          })
+          .join("")}
+      </tbody>
+    </table>`;
+}
+
+async function loadAuditLogs(page = auditCurrentPage) {
+  const tbody = document.getElementById("audit-table-body");
+  const message = document.getElementById("audit-list-message");
+  if (!tbody) return;
+
+  auditCurrentPage = Math.max(1, page);
+  tbody.innerHTML = '<tr><td colspan="7">Loading audit logs...</td></tr>';
+  if (message) message.textContent = "";
+
+  const params = new URLSearchParams({
+    page: String(auditCurrentPage),
+    limit: "25",
+  });
+  const filters = {
+    search: document.getElementById("audit-search")?.value.trim(),
+    action: document.getElementById("audit-action-filter")?.value,
+    entity_type: document.getElementById("audit-entity-filter")?.value,
+    date_from: document.getElementById("audit-date-from")?.value,
+    date_to: document.getElementById("audit-date-to")?.value,
+  };
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+
+  try {
+    const data = await billingFetchJson(`/api/audit-logs?${params.toString()}`);
+    const logs = data.logs || [];
+    auditCurrentPage = data.pagination?.page || 1;
+    auditTotalPages = data.pagination?.pages || 1;
+
+    tbody.innerHTML = logs.length
+      ? logs
+          .map(
+            (log) => `
+              <tr>
+                <td>${escapeHtml(auditDateTime(log.created_at))}</td>
+                <td>${escapeHtml(log.actor_name_snapshot)}</td>
+                <td>${escapeHtml(auditLabel(log.actor_type_snapshot))}</td>
+                <td>${escapeHtml(auditLabel(log.action))}</td>
+                <td>${escapeHtml(auditLabel(log.entity_type))} #${escapeHtml(log.entity_id || "-")}</td>
+                <td>${escapeHtml(log.description)}</td>
+                <td><button type="button" class="audit-view-button" data-audit-id="${escapeHtml(log.audit_log_id)}">View</button></td>
+              </tr>`,
+          )
+          .join("")
+      : '<tr><td colspan="7">No audit logs found.</td></tr>';
+
+    const summary = document.getElementById("audit-pagination-summary");
+    if (summary) {
+      summary.textContent = `Page ${auditCurrentPage} of ${auditTotalPages} · ${data.pagination?.total || 0} logs`;
+    }
+    const previous = document.getElementById("audit-previous-page");
+    const next = document.getElementById("audit-next-page");
+    if (previous) previous.disabled = auditCurrentPage <= 1;
+    if (next) next.disabled = auditCurrentPage >= auditTotalPages;
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML =
+      '<tr><td colspan="7">Unable to load audit logs.</td></tr>';
+    if (message) message.textContent = err.message;
+  }
+}
+
+async function openAuditDetails(auditLogId) {
+  const dialog = document.getElementById("audit-details-dialog");
+  if (!dialog) return;
+  try {
+    const data = await billingFetchJson(
+      `/api/audit-logs/${encodeURIComponent(auditLogId)}`,
+    );
+    const log = data.log;
+    document.getElementById("audit-detail-id").textContent =
+      `#${log.audit_log_id}`;
+    document.getElementById("audit-detail-date").textContent = auditDateTime(
+      log.created_at,
+    );
+    document.getElementById("audit-detail-actor").textContent =
+      log.actor_name_snapshot;
+    document.getElementById("audit-detail-type").textContent = auditLabel(
+      log.actor_type_snapshot,
+    );
+    document.getElementById("audit-detail-user-id").textContent =
+      log.actor_user_id || "-";
+    document.getElementById("audit-detail-ip").textContent =
+      log.ip_address || "-";
+    document.getElementById("audit-detail-action").textContent = auditLabel(
+      log.action,
+    );
+    document.getElementById("audit-detail-record").textContent =
+      `${auditLabel(log.entity_type)} #${log.entity_id || "-"}`;
+    document.getElementById("audit-detail-description").textContent =
+      log.description;
+    document.getElementById("audit-detail-before").innerHTML = auditValueTable(
+      log.old_values,
+    );
+    document.getElementById("audit-detail-after").innerHTML = auditValueTable(
+      log.new_values,
+    );
+    if (!dialog.open) dialog.showModal();
+  } catch (err) {
+    const message = document.getElementById("audit-list-message");
+    if (message) message.textContent = err.message;
+  }
+}
+
+function initAuditLogsTab() {
+  document
+    .getElementById("audit-apply-filters")
+    ?.addEventListener("click", () => {
+      loadAuditLogs(1);
+    });
+  document
+    .getElementById("audit-reset-filters")
+    ?.addEventListener("click", () => {
+      [
+        "audit-search",
+        "audit-action-filter",
+        "audit-entity-filter",
+        "audit-date-from",
+        "audit-date-to",
+      ].forEach((id) => {
+        document.getElementById(id).value = "";
+      });
+      loadAuditLogs(1);
+    });
+  document
+    .getElementById("audit-previous-page")
+    ?.addEventListener("click", () => {
+      if (auditCurrentPage > 1) loadAuditLogs(auditCurrentPage - 1);
+    });
+  document.getElementById("audit-next-page")?.addEventListener("click", () => {
+    if (auditCurrentPage < auditTotalPages) loadAuditLogs(auditCurrentPage + 1);
+  });
+  document
+    .getElementById("audit-table-body")
+    ?.addEventListener("click", (event) => {
+      const button = event.target.closest(".audit-view-button");
+      if (button) openAuditDetails(button.dataset.auditId);
+    });
+  document
+    .getElementById("audit-details-close")
+    ?.addEventListener("click", () => {
+      document.getElementById("audit-details-dialog").close();
     });
 }

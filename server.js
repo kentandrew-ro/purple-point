@@ -53,6 +53,85 @@ const BILLING_STATUSES = ["unpaid", "partial", "paid"];
 const PAYMENT_METHODS = ["cash", "card", "gcash", "bank_transfer", "other"];
 const PAYMENT_STATUSES = ["pending", "completed", "failed"];
 
+function amountsEqual(first, second) {
+  return Math.abs(Number(first) - Number(second)) < 0.005;
+}
+
+async function syncPaidBillingStatuses(billingId = null) {
+  const idCondition = billingId ? " AND b.billing_id = ?" : "";
+  const params = billingId ? [billingId] : [];
+  await pool.execute(
+    `UPDATE billing b
+     LEFT JOIN (
+       SELECT billing_id, SUM(amount_paid) AS amount_paid
+       FROM payments
+       WHERE payment_status = 'completed'
+       GROUP BY billing_id
+     ) totals ON totals.billing_id = b.billing_id
+     SET b.billing_status = 'paid'
+     WHERE b.total_amount - COALESCE(totals.amount_paid, 0) <= 0
+       AND b.billing_status <> 'paid'${idCondition}`,
+    params,
+  );
+}
+
+async function createAuditLog(executor, req, details) {
+  const [actors] = await executor.execute(
+    `SELECT
+       u.user_id,
+       CONCAT(u.first_name, ' ', u.last_name) AS actor_name,
+       CASE
+         WHEN d.dentist_id IS NOT NULL THEN 'dentist'
+         WHEN s.staff_id IS NOT NULL THEN 'staff'
+         ELSE u.role
+       END AS actor_type
+     FROM users u
+     LEFT JOIN dentist d ON d.user_id = u.user_id
+     LEFT JOIN staff s ON s.user_id = u.user_id
+     WHERE u.user_id = ?`,
+    [req.session.userId],
+  );
+  const actor = actors[0] || {};
+  const oldValues =
+    details.oldValues === undefined || details.oldValues === null
+      ? null
+      : JSON.stringify(details.oldValues);
+  const newValues =
+    details.newValues === undefined || details.newValues === null
+      ? null
+      : JSON.stringify(details.newValues);
+  const ipAddress = String(req.ip || req.socket?.remoteAddress || "")
+    .replace(/^::ffff:/, "")
+    .slice(0, 45);
+
+  await executor.execute(
+    `INSERT INTO audit_logs
+       (actor_user_id, actor_name_snapshot, actor_type_snapshot, action,
+        entity_type, entity_id, description, old_values, new_values, ip_address)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      req.session.userId,
+      actor.actor_name || `User #${req.session.userId}`,
+      actor.actor_type || req.session.role || "unknown",
+      details.action,
+      details.entityType,
+      details.entityId || null,
+      details.description,
+      oldValues,
+      newValues,
+      ipAddress || null,
+    ],
+  );
+}
+
+async function recordAudit(req, details) {
+  try {
+    await createAuditLog(pool, req, details);
+  } catch (error) {
+    console.error("Unable to record audit log:", error);
+  }
+}
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 app.use(
@@ -222,7 +301,9 @@ app.put("/api/patients/me", async (req, res) => {
       [req.session.userId],
     );
 
+    let patientId;
     if (existing.length) {
+      patientId = existing[0].patient_id;
       await conn.execute(
         `UPDATE patients SET
           date_of_birth = ?, gender = ?, house_no = ?, street = ?,
@@ -241,7 +322,7 @@ app.put("/api/patients/me", async (req, res) => {
         ],
       );
     } else {
-      await conn.execute(
+      const [patientResult] = await conn.execute(
         `INSERT INTO patients
           (user_id, date_of_birth, gender, house_no, street, barangay, city, zip_code, blood_type)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -257,8 +338,25 @@ app.put("/api/patients/me", async (req, res) => {
           blood_type,
         ],
       );
+      patientId = patientResult.insertId;
     }
 
+    await createAuditLog(conn, req, {
+      action: "UPDATE_PATIENT",
+      entityType: "patient",
+      entityId: patientId,
+      description: `${existing.length ? "Updated" : "Created"} patient profile #${patientId}`,
+      newValues: {
+        first_name,
+        last_name,
+        date_of_birth,
+        gender: normalizedGender,
+        contact_number,
+        city,
+        zip_code,
+        blood_type,
+      },
+    });
     await conn.commit();
     return res.json({ ok: true, message: "Profile saved successfully." });
   } catch (err) {
@@ -616,6 +714,14 @@ app.post("/api/dentist-schedule", async (req, res) => {
       [dentist_id, day_of_week, start_time, end_time],
     );
 
+    await recordAudit(req, {
+      action: "UPDATE_DENTIST_SCHEDULE",
+      entityType: "dentist_schedule",
+      entityId: result.insertId,
+      description: `Added ${day_of_week} schedule for dentist #${dentist_id}`,
+      newValues: { dentist_id, day_of_week, start_time, end_time },
+    });
+
     return res.status(201).json({ ok: true, schedule_id: result.insertId });
   } catch (err) {
     console.error(err);
@@ -789,6 +895,21 @@ app.post("/api/appointments", async (req, res) => {
       ],
     );
 
+    await recordAudit(req, {
+      action: "CREATE_APPOINTMENT",
+      entityType: "appointment",
+      entityId: result.insertId,
+      description: `Created appointment #${result.insertId} for patient #${patient_id}`,
+      newValues: {
+        patient_id,
+        dentist_id,
+        appointment_date,
+        appointment_time,
+        appointment_type,
+        appointment_status,
+      },
+    });
+
     return res.status(201).json({ ok: true, id: result.insertId });
   } catch (err) {
     console.error(err);
@@ -858,6 +979,15 @@ app.post("/api/appointments/:id/cancel", async (req, res) => {
       [cancel_reason, appointmentId],
     );
 
+    await recordAudit(req, {
+      action: "CANCEL_APPOINTMENT",
+      entityType: "appointment",
+      entityId: appointmentId,
+      description: `Cancelled appointment #${appointmentId}`,
+      oldValues: { appointment_status: existing[0].appointment_status },
+      newValues: { appointment_status: "cancelled", cancel_reason },
+    });
+
     return res.json({ ok: true, message: "Appointment cancelled." });
   } catch (err) {
     console.error(err);
@@ -902,7 +1032,7 @@ app.patch("/api/appointments/:id/status", async (req, res) => {
 
   try {
     const [existing] = await pool.execute(
-      "SELECT appointment_id FROM appointments WHERE appointment_id = ?",
+      "SELECT appointment_id, appointment_status FROM appointments WHERE appointment_id = ?",
       [appointmentId],
     );
 
@@ -927,6 +1057,15 @@ app.patch("/api/appointments/:id/status", async (req, res) => {
         [appointment_status, appointmentId],
       );
     }
+
+    await recordAudit(req, {
+      action: "UPDATE_APPOINTMENT_STATUS",
+      entityType: "appointment",
+      entityId: appointmentId,
+      description: `Changed appointment #${appointmentId} status to ${appointment_status}`,
+      oldValues: { appointment_status: existing[0].appointment_status },
+      newValues: { appointment_status, cancel_reason },
+    });
 
     return res.json({ ok: true, message: "Appointment status updated." });
   } catch (err) {
@@ -1004,6 +1143,119 @@ app.get("/api/dashboard/schedule", async (req, res) => {
   }
 });
 
+app.get("/api/audit-logs", async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const search = requireField(req.query, "search") || "";
+  const action = requireField(req.query, "action") || "";
+  const entityType = requireField(req.query, "entity_type") || "";
+  const dateFrom = requireField(req.query, "date_from") || "";
+  const dateTo = requireField(req.query, "date_to") || "";
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(
+    100,
+    Math.max(10, Number.parseInt(req.query.limit, 10) || 25),
+  );
+
+  if ((dateFrom && !isIsoDate(dateFrom)) || (dateTo && !isIsoDate(dateTo))) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "Invalid audit date filter." });
+  }
+
+  const where = [];
+  const params = [];
+  if (search) {
+    const term = `%${search}%`;
+    where.push(
+      "(actor_name_snapshot LIKE ? OR description LIKE ? OR CAST(entity_id AS CHAR) LIKE ?)",
+    );
+    params.push(term, term, term);
+  }
+  if (action) {
+    where.push("action = ?");
+    params.push(action);
+  }
+  if (entityType) {
+    where.push("entity_type = ?");
+    params.push(entityType);
+  }
+  if (dateFrom) {
+    where.push("created_at >= ?");
+    params.push(`${dateFrom} 00:00:00`);
+  }
+  if (dateTo) {
+    where.push("created_at < DATE_ADD(?, INTERVAL 1 DAY)");
+    params.push(`${dateTo} 00:00:00`);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const offset = (page - 1) * limit;
+
+  try {
+    const [[countRow]] = await pool.execute(
+      `SELECT COUNT(*) AS total FROM audit_logs ${whereSql}`,
+      params,
+    );
+    const [rows] = await pool.execute(
+      `SELECT audit_log_id, actor_user_id, actor_name_snapshot,
+              actor_type_snapshot, action, entity_type, entity_id,
+              description, ip_address,
+              DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at
+       FROM audit_logs
+       ${whereSql}
+       ORDER BY created_at DESC, audit_log_id DESC
+       LIMIT ${limit} OFFSET ${offset}`,
+      params,
+    );
+
+    return res.json({
+      ok: true,
+      logs: rows,
+      pagination: {
+        page,
+        limit,
+        total: Number(countRow.total),
+        pages: Math.max(1, Math.ceil(Number(countRow.total) / limit)),
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return res
+      .status(500)
+      .json({ ok: false, error: err?.message || "Database error" });
+  }
+});
+
+app.get("/api/audit-logs/:id", async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const auditLogId = Number.parseInt(req.params.id, 10);
+  if (!auditLogId) {
+    return res.status(400).json({ ok: false, error: "Invalid audit log ID." });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT audit_log_id, actor_user_id, actor_name_snapshot,
+              actor_type_snapshot, action, entity_type, entity_id,
+              description, old_values, new_values, ip_address,
+              DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at
+       FROM audit_logs
+       WHERE audit_log_id = ?`,
+      [auditLogId],
+    );
+    if (!rows.length) {
+      return res.status(404).json({ ok: false, error: "Audit log not found." });
+    }
+    return res.json({ ok: true, log: rows[0] });
+  } catch (err) {
+    console.error(err);
+    return res
+      .status(500)
+      .json({ ok: false, error: err?.message || "Database error" });
+  }
+});
+
 app.get("/api/billings", async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
@@ -1016,6 +1268,7 @@ app.get("/api/billings", async (req, res) => {
   }
 
   try {
+    await syncPaidBillingStatuses();
     const search = `%${q}%`;
     const [rows] = await pool.execute(
       `SELECT
@@ -1136,6 +1389,9 @@ app.post("/api/billings", async (req, res) => {
       return res.status(404).json({ ok: false, error: "Treatment not found." });
     }
 
+    const effectiveBillingStatus = amountsEqual(totalAmount, 0)
+      ? "paid"
+      : billingStatus;
     const [result] = await pool.execute(
       `INSERT INTO billing
          (patient_id, patient_treatment_id, billing_date, total_amount, billing_status)
@@ -1145,9 +1401,23 @@ app.post("/api/billings", async (req, res) => {
         patientTreatmentId,
         billingDate,
         totalAmount,
-        billingStatus,
+        effectiveBillingStatus,
       ],
     );
+
+    await recordAudit(req, {
+      action: "CREATE_BILLING",
+      entityType: "billing",
+      entityId: result.insertId,
+      description: `Created billing statement #${result.insertId}`,
+      newValues: {
+        patient_id: treatmentRows[0].patient_id,
+        patient_treatment_id: patientTreatmentId,
+        billing_date: billingDate,
+        total_amount: totalAmount,
+        billing_status: effectiveBillingStatus,
+      },
+    });
 
     return res.status(201).json({
       ok: true,
@@ -1177,6 +1447,7 @@ app.get("/api/billings/:id", async (req, res) => {
   }
 
   try {
+    await syncPaidBillingStatuses(billingId);
     const [billingRows] = await pool.execute(
       `SELECT
          b.billing_id,
@@ -1287,7 +1558,9 @@ app.patch("/api/billings/:id", async (req, res) => {
     conn = await pool.getConnection();
     await conn.beginTransaction();
     const [billingRows] = await conn.execute(
-      "SELECT billing_id FROM billing WHERE billing_id = ? FOR UPDATE",
+      `SELECT billing_id, DATE_FORMAT(billing_date, '%Y-%m-%d') AS billing_date,
+              total_amount, billing_status
+       FROM billing WHERE billing_id = ? FOR UPDATE`,
       [billingId],
     );
     if (!billingRows.length) {
@@ -1311,14 +1584,40 @@ app.patch("/api/billings/:id", async (req, res) => {
       });
     }
 
+    const effectiveBillingStatus = amountsEqual(
+      paymentTotal.amount_paid,
+      totalAmount,
+    )
+      ? "paid"
+      : billingStatus;
     await conn.execute(
       `UPDATE billing
        SET billing_date = ?, total_amount = ?, billing_status = ?
        WHERE billing_id = ?`,
-      [billingDate, totalAmount, billingStatus, billingId],
+      [billingDate, totalAmount, effectiveBillingStatus, billingId],
     );
+    await createAuditLog(conn, req, {
+      action: "UPDATE_BILLING",
+      entityType: "billing",
+      entityId: billingId,
+      description: `Updated billing statement #${billingId}`,
+      oldValues: {
+        billing_date: billingRows[0].billing_date,
+        total_amount: billingRows[0].total_amount,
+        billing_status: billingRows[0].billing_status,
+      },
+      newValues: {
+        billing_date: billingDate,
+        total_amount: totalAmount,
+        billing_status: effectiveBillingStatus,
+      },
+    });
     await conn.commit();
-    return res.json({ ok: true, message: "Billing statement updated." });
+    return res.json({
+      ok: true,
+      message: "Billing statement updated.",
+      billing_status: effectiveBillingStatus,
+    });
   } catch (err) {
     if (conn) await conn.rollback();
     console.error(err);
@@ -1402,22 +1701,28 @@ app.post("/api/billings/:id/payments", async (req, res) => {
         .json({ ok: false, error: "Billing statement not found." });
     }
 
-    if (paymentStatus === "completed") {
-      const [[paymentTotal]] = await conn.execute(
-        `SELECT COALESCE(SUM(amount_paid), 0) AS amount_paid
-         FROM payments
-         WHERE billing_id = ? AND payment_status = 'completed'`,
-        [billingId],
-      );
-      const newPaidTotal = Number(paymentTotal.amount_paid) + amountPaid;
-      if (newPaidTotal > Number(billingRows[0].total_amount)) {
-        await conn.rollback();
-        return res.status(400).json({
-          ok: false,
-          error: "Completed payment cannot exceed the remaining balance.",
-        });
-      }
+    const [[paymentTotal]] = await conn.execute(
+      `SELECT COALESCE(SUM(amount_paid), 0) AS amount_paid
+       FROM payments
+       WHERE billing_id = ? AND payment_status = 'completed'`,
+      [billingId],
+    );
+    const newPaidTotal =
+      Number(paymentTotal.amount_paid) +
+      (paymentStatus === "completed" ? amountPaid : 0);
+    if (newPaidTotal - Number(billingRows[0].total_amount) > 0.005) {
+      await conn.rollback();
+      return res.status(400).json({
+        ok: false,
+        error: "Completed payment cannot exceed the remaining balance.",
+      });
     }
+    const effectiveBillingStatus = amountsEqual(
+      newPaidTotal,
+      billingRows[0].total_amount,
+    )
+      ? "paid"
+      : billingStatus;
 
     const [result] = await conn.execute(
       `INSERT INTO payments
@@ -1444,8 +1749,24 @@ app.post("/api/billings/:id/payments", async (req, res) => {
     );
     await conn.execute(
       "UPDATE billing SET billing_status = ? WHERE billing_id = ?",
-      [billingStatus, billingId],
+      [effectiveBillingStatus, billingId],
     );
+    await createAuditLog(conn, req, {
+      action: "RECORD_PAYMENT",
+      entityType: "payment",
+      entityId: result.insertId,
+      description: `Recorded payment ${referenceNumber} for billing #${billingId}`,
+      newValues: {
+        billing_id: billingId,
+        payment_date: paymentDate,
+        amount_paid: amountPaid,
+        payment_method: paymentMethod,
+        payment_status: paymentStatus,
+        billing_status: effectiveBillingStatus,
+        reference_number: referenceNumber,
+        external_reference: externalReference,
+      },
+    });
     await conn.commit();
 
     return res.status(201).json({
@@ -1453,6 +1774,7 @@ app.post("/api/billings/:id/payments", async (req, res) => {
       message: "Payment recorded.",
       payment_id: result.insertId,
       reference_number: referenceNumber,
+      billing_status: effectiveBillingStatus,
     });
   } catch (err) {
     if (conn) await conn.rollback();
@@ -1829,7 +2151,15 @@ app.put("/api/dental-records/:id", async (req, res) => {
     }
 
     const [existing] = await pool.execute(
-      "SELECT dental_record_id FROM dental_records WHERE dental_record_id = ?",
+      `SELECT dr.dental_record_id, dr.dentist_id,
+              DATE_FORMAT(dr.visit_date, '%Y-%m-%d') AS visit_date,
+              t.treatment_name AS procedure_name,
+              pt.actual_price AS price,
+              t.category
+       FROM dental_records dr
+       LEFT JOIN patient_treatments pt ON pt.dental_record_id = dr.dental_record_id
+       LEFT JOIN treatment t ON t.treatment_id = pt.treatment_id
+       WHERE dr.dental_record_id = ?`,
       [recordId],
     );
 
@@ -1888,6 +2218,29 @@ app.put("/api/dental-records/:id", async (req, res) => {
         [recordId, newTreatment.insertId, teeth_involved, price, duration],
       );
     }
+
+    await recordAudit(req, {
+      action: "UPDATE_DENTAL_RECORD",
+      entityType: "dental_record",
+      entityId: recordId,
+      description: `Updated dental record #${recordId}`,
+      oldValues: {
+        dentist_id: existing[0].dentist_id,
+        visit_date: existing[0].visit_date,
+        procedure: existing[0].procedure_name,
+        price: existing[0].price,
+        category: existing[0].category,
+      },
+      newValues: {
+        dentist_id,
+        visit_date,
+        procedure,
+        teeth_involved,
+        price,
+        duration,
+        category,
+      },
+    });
 
     return res.json({ ok: true, message: "Treatment updated successfully." });
   } catch (err) {
@@ -2021,6 +2374,24 @@ app.post("/api/dental-records", async (req, res) => {
        VALUES (?, ?, ?, ?, ?)`,
       [result.insertId, newTreatment.insertId, teeth_involved, price, duration],
     );
+
+    await recordAudit(req, {
+      action: "CREATE_DENTAL_RECORD",
+      entityType: "dental_record",
+      entityId: result.insertId,
+      description: `Created dental record #${result.insertId} for patient #${patient_id}`,
+      newValues: {
+        patient_id,
+        appointment_id,
+        dentist_id,
+        visit_date,
+        procedure,
+        teeth_involved,
+        price,
+        duration,
+        category,
+      },
+    });
 
     let doctorName = "—";
     if (dentist_id) {
@@ -2374,6 +2745,19 @@ app.post("/api/admin/users/promote", async (req, res) => {
       await pool.execute("UPDATE users SET role = 'admin' WHERE user_id = ?", [
         user_id,
       ]);
+      await recordAudit(req, {
+        action: "PROMOTE_USER",
+        entityType: "user",
+        entityId: user_id,
+        description: `Promoted ${users[0].first_name} ${users[0].last_name} to dentist`,
+        oldValues: { role: users[0].role },
+        newValues: {
+          role: "admin",
+          profile_type: "dentist",
+          dentist_id: result.insertId,
+          specialization,
+        },
+      });
       return res.json({ ok: true, doctor_id: result.insertId, role: "doctor" });
     }
 
@@ -2397,6 +2781,19 @@ app.post("/api/admin/users/promote", async (req, res) => {
     await pool.execute("UPDATE users SET role = 'admin' WHERE user_id = ?", [
       user_id,
     ]);
+    await recordAudit(req, {
+      action: "PROMOTE_USER",
+      entityType: "user",
+      entityId: user_id,
+      description: `Promoted ${users[0].first_name} ${users[0].last_name} to staff`,
+      oldValues: { role: users[0].role },
+      newValues: {
+        role: "admin",
+        profile_type: "staff",
+        staff_id: result.insertId,
+        shift_schedule,
+      },
+    });
     return res.json({ ok: true, staff_id: result.insertId, role: "staff" });
   } catch (err) {
     console.error(err);
