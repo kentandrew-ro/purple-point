@@ -1,5 +1,5 @@
 document.getElementById("loginSubmit").addEventListener("click", async () => {
-  const identifier = document.getElementById("loginUsername").value;
+  const identifier = document.getElementById("loginUsername").value.trim();
   const password = document.getElementById("loginPassword").value;
 
   if (!identifier || !password) {

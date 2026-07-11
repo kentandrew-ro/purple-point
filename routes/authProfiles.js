@@ -34,11 +34,21 @@ function registerAuthProfileRoutes(app) {
 
   app.post("/api/login", async (req, res) => {
     const { identifier, password } = req.body;
+    const normalizedIdentifier =
+      typeof identifier === "string" ? identifier.trim() : "";
+
+    if (!normalizedIdentifier || typeof password !== "string" || !password) {
+      return res
+        .status(400)
+        .json({ error: "Username/email and password are required." });
+    }
 
     try {
       const [rows] = await pool.execute(
-        "SELECT * FROM users WHERE username = ? OR email = ?",
-        [identifier, identifier],
+        `SELECT * FROM users
+         WHERE username = ? OR LOWER(TRIM(email)) = LOWER(?)
+         LIMIT 1`,
+        [normalizedIdentifier, normalizedIdentifier],
       );
 
       if (rows.length === 0) {
@@ -182,12 +192,10 @@ function registerAuthProfileRoutes(app) {
       if (!blood_type) missing.push("blood_type");
 
       if (missing.length) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: `Missing field(s): ${missing.join(", ")}`,
-          });
+        return res.status(400).json({
+          ok: false,
+          error: `Missing field(s): ${missing.join(", ")}`,
+        });
       }
 
       const normalizedGender = gender.toLowerCase();
@@ -342,12 +350,10 @@ function registerAuthProfileRoutes(app) {
         [user_id],
       );
       if (existing.length) {
-        return res
-          .status(409)
-          .json({
-            ok: false,
-            error: "This user already has a patient profile.",
-          });
+        return res.status(409).json({
+          ok: false,
+          error: "This user already has a patient profile.",
+        });
       }
 
       const [result] = await pool.execute(
@@ -529,12 +535,10 @@ function registerAuthProfileRoutes(app) {
       );
       if (existing.length) {
         await conn.rollback();
-        return res
-          .status(409)
-          .json({
-            ok: false,
-            error: "This user already has a doctor profile.",
-          });
+        return res.status(409).json({
+          ok: false,
+          error: "This user already has a doctor profile.",
+        });
       }
 
       const [licenseMatches] = await conn.execute(
@@ -608,12 +612,10 @@ function registerAuthProfileRoutes(app) {
       if (!end_time) missing.push("end_time");
 
       if (missing.length) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: `Missing field(s): ${missing.join(", ")}`,
-          });
+        return res.status(400).json({
+          ok: false,
+          error: `Missing field(s): ${missing.join(", ")}`,
+        });
       }
 
       const validDays = [
