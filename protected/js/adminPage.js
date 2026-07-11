@@ -516,7 +516,7 @@ function renderDentistSuggestions(dentists, target) {
   list.innerHTML = dentists
     .map(
       (d) =>
-        `<div class="suggestion-item" data-dentist-id="${escapeHtml(d.dentist_id)}">${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)} · ${escapeHtml(d.specialization || d.email || "")}</div>`,
+        `<div class="suggestion-item" data-dentist-id="${escapeHtml(d.dentist_id)}">${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)} · ${escapeHtml(d.specialization || d.email || "")}${d.license_number ? ` · License: ${escapeHtml(d.license_number)}` : ""}</div>`,
     )
     .join("");
 }
@@ -677,6 +677,8 @@ async function promoteSelectedUser() {
     const payload = {
       user_id: Number(userId),
       role,
+      date_of_birth: document.getElementById("promote_date_of_birth")?.value,
+      gender: document.getElementById("promote_gender")?.value,
       hire_date: document.getElementById("promote_hire_date")?.value,
       specialization: document.getElementById("specialization")?.value,
       license_number: document.getElementById("license_number")?.value,
@@ -703,6 +705,17 @@ async function promoteSelectedUser() {
     updateSelectedUserCard(null);
     clearUserSuggestions();
     document.getElementById("promote-role").value = "";
+    [
+      "promote_date_of_birth",
+      "promote_gender",
+      "promote_hire_date",
+      "specialization",
+      "license_number",
+      "shift_schedule",
+    ].forEach((id) => {
+      const field = document.getElementById(id);
+      if (field) field.value = "";
+    });
     showRoleSpecificFields();
   } catch (err) {
     showResult(resultBox, `Error: ${err?.message || "Unknown error"}`);
