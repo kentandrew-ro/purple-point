@@ -7,8 +7,18 @@
     <link rel="stylesheet" href="/public_css/styles.css" />
   </head>
   <body class="admin-layout">
+    <header class="admin-topbar">
+      <div class="admin-brand">
+        <span class="brand-name">Purple<span>Point</span></span>
+        <small>Admin</small>
+      </div>
+      <div class="admin-account">
+        <span>Admin</span>
+        <button type="button" onclick="signOut()">Sign Out</button>
+      </div>
+    </header>
+
     <div class="sidebar">
-      <strong>PurplePoint</strong> <small>Admin</small> <br /><br />
       <span class="section-label">Overview</span>
       <ul>
         <li><a href="#" onclick="showTab('dashboard')">Dashboard</a></li>
@@ -46,8 +56,6 @@
           <a href="#" onclick="showTab('doctor-profiles')">Doctor Profiles</a>
         </li>
       </ul>
-      <br />
-      <button onclick="signOut()">Sign Out</button>
     </div>
 
     <div class="content">
