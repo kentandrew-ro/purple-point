@@ -1,0 +1,17 @@
+# PurplePoint database documentation configuration.
+# Values are loaded from the ignored .envrc file.
+name: PurplePoint
+desc: PurplePoint dental clinic database schema
+
+dsn: "maria://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?tls=false"
+docPath: docs/schema
+
+format:
+  adjust: true
+  sort: false
+  number: false
+
+er:
+  skip: false
+  format: svg
+  comment: true

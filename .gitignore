@@ -8,4 +8,6 @@ team/
 .direnv/
 .envrc.example
 test/
+docs/
+scripts/
 Makefile
