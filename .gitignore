@@ -6,3 +6,6 @@ server.js.clean.bak
 team/
 .envrc
 .direnv/
+.envrc.example
+test/
+Makefile
