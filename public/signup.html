@@ -4,50 +4,108 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Purple Point - Signup</title>
+    <link rel="stylesheet" href="/public_css/styles.css" />
   </head>
-  <body>
-    <h1>SIGNUP PAGE</h1>
+  <body class="auth-page">
+    <section class="auth-visual">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">P</span
+        ><span class="brand-name">Purple<span>Point</span></span>
+      </div>
+      <h1>Start your care journey.</h1>
+      <p>
+        Create your patient account to manage appointments and keep your details
+        ready for every visit.
+      </p>
+      <ul class="feature-list">
+        <li>Fast appointment booking</li>
+        <li>One convenient patient profile</li>
+        <li>Simple and secure access</li>
+      </ul>
+    </section>
 
-    <form action="" method="post">
-      <input
-        type="text"
-        name="firstName"
-        placeholder="Ex. Small"
-        required
-      /><br />
-      <input
-        type="text"
-        name="lastName"
-        placeholder="Ex. Orca"
-        required
-      /><br />
-      <input
-        type="text"
-        name="username"
-        placeholder="Ex. smallorca"
-        required
-      /><br />
-      <input
-        type="email"
-        name="email"
-        placeholder="s.orca@ocean.com"
-        required
-      /><br />
-      <input
-        type="password"
-        name="password"
-        placeholder="Create a strong password"
-        required
-      /><br />
-      <input
-        type="tel"
-        name="contactNumber"
-        placeholder="+63 9XX XXX XXXX"
-        required
-      /><br />
-
-      <button type="button" id="signUpSubmit">Sign Up</button>
-    </form>
+    <main class="auth-content">
+      <div class="auth-card">
+        <h1>Create an account</h1>
+        <p>Register as a PurplePoint patient.</p>
+        <form action="" method="post">
+          <div class="form-grid">
+            <div class="field-group">
+              <label for="firstName">First name</label
+              ><input
+                id="firstName"
+                type="text"
+                name="firstName"
+                placeholder="First name"
+                autocomplete="given-name"
+                required
+              />
+            </div>
+            <div class="field-group">
+              <label for="lastName">Last name</label
+              ><input
+                id="lastName"
+                type="text"
+                name="lastName"
+                placeholder="Last name"
+                autocomplete="family-name"
+                required
+              />
+            </div>
+          </div>
+          <div class="field-group">
+            <label for="username">Username</label
+            ><input
+              id="username"
+              type="text"
+              name="username"
+              placeholder="Choose a username"
+              autocomplete="username"
+              required
+            />
+          </div>
+          <div class="field-group">
+            <label for="email">Email address</label
+            ><input
+              id="email"
+              type="email"
+              name="email"
+              placeholder="name@example.com"
+              autocomplete="email"
+              required
+            />
+          </div>
+          <div class="field-group">
+            <label for="password">Password</label
+            ><input
+              id="password"
+              type="password"
+              name="password"
+              placeholder="Create a strong password"
+              autocomplete="new-password"
+              required
+            />
+          </div>
+          <div class="field-group">
+            <label for="contactNumber">Contact number</label
+            ><input
+              id="contactNumber"
+              type="tel"
+              name="contactNumber"
+              placeholder="+63 9XX XXX XXXX"
+              autocomplete="tel"
+              required
+            />
+          </div>
+          <div class="auth-actions">
+            <button type="button" id="signUpSubmit">Create Account</button
+            ><a class="button button-secondary" href="/login.html"
+              >Back to Sign In</a
+            >
+          </div>
+        </form>
+      </div>
+    </main>
 
     <script src="public_js/signup.js"></script>
   </body>

@@ -2,47 +2,155 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Add Patient</title>
-    <link rel="stylesheet" href="style.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Patient Profile - PurplePoint</title>
+    <link rel="stylesheet" href="/public_css/styles.css" />
   </head>
   <body>
-    <button type="button" onclick="history.back()">← Back</button>
-    <form id="add-patient-form">
-      <input name="first_name" placeholder="First name" required />
-      <input name="last_name" placeholder="Last name" required />
-      <input
-        name="date_of_birth"
-        type="date"
-        placeholder="Date of Birth"
-        required
-      />
-      <select name="gender" required>
-        <option value="" disabled selected hidden>Select Gender</option>
-        <option value="Male">Male</option>
-        <option value="Female">Female</option>
-      </select>
-      <input name="contact_number" placeholder="Contact Number" />
-      <input name="house_no" placeholder="House Number" required />
-      <input name="street" placeholder="Street" required />
-      <input name="barangay" placeholder="Barangay" required />
-      <input name="city" placeholder="City" required />
-      <input name="zip_code" placeholder="Zip Code" required />
-      <select name="blood_type" required>
-        <option value="" disabled selected hidden>Select Blood Type</option>
-        <option value="A+">A+</option>
-        <option value="A-">A-</option>
-        <option value="B+">B+</option>
-        <option value="B-">B-</option>
-        <option value="AB+">AB+</option>
-        <option value="AB-">AB-</option>
-        <option value="O+">O+</option>
-        <option value="O-">O-</option>
-      </select>
-      <button type="submit">Save Patient</button>
-    </form>
-
-    <div id="add-patient-result" style="margin-top: 16px"></div>
-
+    <nav class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">P</span
+        ><span class="brand-name">Purple<span>Point</span></span>
+      </div>
+      <div class="topbar-actions">
+        <button type="button" onclick="history.back()">← Back</button>
+      </div>
+    </nav>
+    <main class="page-shell">
+      <div class="page-container">
+        <header class="page-heading">
+          <h1>My Patient Profile</h1>
+          <p>Keep your personal and health information up to date.</p>
+        </header>
+        <section class="card form-card">
+          <h2>Personal Information</h2>
+          <form id="add-patient-form">
+            <div class="form-grid">
+              <div class="field-group">
+                <label for="profile-first-name">First name</label
+                ><input
+                  id="profile-first-name"
+                  name="first_name"
+                  placeholder="First name"
+                  required
+                />
+              </div>
+              <div class="field-group">
+                <label for="profile-last-name">Last name</label
+                ><input
+                  id="profile-last-name"
+                  name="last_name"
+                  placeholder="Last name"
+                  required
+                />
+              </div>
+              <div class="field-group">
+                <label for="profile-birth-date">Date of birth</label
+                ><input
+                  id="profile-birth-date"
+                  name="date_of_birth"
+                  type="date"
+                  required
+                />
+              </div>
+              <div class="field-group">
+                <label for="profile-gender">Gender</label
+                ><select id="profile-gender" name="gender" required>
+                  <option value="" disabled selected hidden>
+                    Select gender
+                  </option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label for="profile-contact">Contact number</label
+                ><input
+                  id="profile-contact"
+                  name="contact_number"
+                  placeholder="Contact number"
+                />
+              </div>
+              <div class="field-group">
+                <label for="profile-blood-type">Blood type</label
+                ><select id="profile-blood-type" name="blood_type" required>
+                  <option value="" disabled selected hidden>
+                    Select blood type
+                  </option>
+                  <option value="A+">A+</option>
+                  <option value="A-">A-</option>
+                  <option value="B+">B+</option>
+                  <option value="B-">B-</option>
+                  <option value="AB+">AB+</option>
+                  <option value="AB-">AB-</option>
+                  <option value="O+">O+</option>
+                  <option value="O-">O-</option>
+                </select>
+              </div>
+            </div>
+            <h3 style="margin: 12px 0 0">Address</h3>
+            <div class="form-grid">
+              <div class="field-group">
+                <label for="profile-house">House number</label
+                ><input
+                  id="profile-house"
+                  name="house_no"
+                  placeholder="House number"
+                  required
+                />
+              </div>
+              <div class="field-group">
+                <label for="profile-street">Street</label
+                ><input
+                  id="profile-street"
+                  name="street"
+                  placeholder="Street"
+                  required
+                />
+              </div>
+              <div class="field-group">
+                <label for="profile-barangay">Barangay</label
+                ><input
+                  id="profile-barangay"
+                  name="barangay"
+                  placeholder="Barangay"
+                  required
+                />
+              </div>
+              <div class="field-group">
+                <label for="profile-city">City</label
+                ><input
+                  id="profile-city"
+                  name="city"
+                  placeholder="City"
+                  required
+                />
+              </div>
+              <div class="field-group">
+                <label for="profile-zip">ZIP code</label
+                ><input
+                  id="profile-zip"
+                  name="zip_code"
+                  placeholder="ZIP code"
+                  required
+                />
+              </div>
+            </div>
+            <div class="actions">
+              <button type="submit">Save Patient Profile</button
+              ><button type="button" class="secondary" onclick="history.back()">
+                Cancel
+              </button>
+            </div>
+          </form>
+          <div
+            id="add-patient-result"
+            class="form-message"
+            aria-live="polite"
+          ></div>
+        </section>
+      </div>
+    </main>
     <script src="/js/profile.js"></script>
   </body>
 </html>

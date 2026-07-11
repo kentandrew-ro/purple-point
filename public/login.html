@@ -3,26 +3,60 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Document</title>
+    <title>Sign In - PurplePoint</title>
+    <link rel="stylesheet" href="/public_css/styles.css" />
   </head>
-  <body>
-    <h1>LOGIN PAGE</h1>
-    <form action="">
-      <input
-        type="text"
-        id="loginUsername"
-        placeholder="Username or Email"
-        required
-      /><br />
-      <input
-        type="password"
-        id="loginPassword"
-        placeholder="Password"
-        required
-      /><br />
-      <button type="button" id="loginSubmit">Login</button>
-      <button type="button" id="signupButton">Sign Up</button>
-    </form>
+  <body class="auth-page">
+    <section class="auth-visual">
+      <div class="brand">
+        <span class="brand-name">Purple<span>Point</span></span>
+      </div>
+      <h1>Your dental care, simplified.</h1>
+      <p>
+        Manage appointments and keep your dental information together in one
+        secure patient portal.
+      </p>
+      <ul class="feature-list">
+        <li>Book and review appointments</li>
+        <li>Maintain your patient profile</li>
+        <li>Connect with your dental care team</li>
+      </ul>
+    </section>
+
+    <main class="auth-content">
+      <div class="auth-card">
+        <h1>Welcome back</h1>
+        <p>Sign in to your PurplePoint account.</p>
+        <form action="">
+          <div class="field-group">
+            <label for="loginUsername">Username or email</label>
+            <input
+              type="text"
+              id="loginUsername"
+              placeholder="Enter username or email"
+              autocomplete="username"
+              required
+            />
+          </div>
+          <div class="field-group">
+            <label for="loginPassword">Password</label>
+            <input
+              type="password"
+              id="loginPassword"
+              placeholder="Enter password"
+              autocomplete="current-password"
+              required
+            />
+          </div>
+          <div class="auth-actions">
+            <button type="button" id="loginSubmit">Sign In</button>
+            <button type="button" id="signupButton" class="secondary">
+              Create Account
+            </button>
+          </div>
+        </form>
+      </div>
+    </main>
 
     <script src="public_js/login.js"></script>
   </body>

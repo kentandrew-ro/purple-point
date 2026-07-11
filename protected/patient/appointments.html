@@ -3,126 +3,166 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Appointments</title>
-    <style>
-      .view {
-        display: none;
-      }
-      .view.active {
-        display: block;
-      }
-      #patient-id-field {
-        display: none;
-      }
-      #appointment-status-field {
-        display: none;
-      }
-    </style>
+    <title>Appointments - PurplePoint</title>
+    <link rel="stylesheet" href="/public_css/styles.css" />
   </head>
   <body>
-    <div id="view-choose" class="view active">
-      <button type="button" onclick="history.back()">← Back</button>
-      <h2>Appointments</h2>
-      <button type="button" id="btn-add">Add Appointment</button>
-      <button type="button" id="btn-view">View Appointments</button>
-      <button type="button" id="btn-cancel">Cancel Appointment</button>
-    </div>
-
-    <div id="view-add" class="view">
-      <button id="back-from-add" type="button">← Back</button>
-      <h2>Add Appointment</h2>
-      <form id="add-appointment-form">
-        <div id="patient-id-field">
-          <input
-            name="patient_id"
-            type="number"
-            placeholder="Patient ID"
-          /><br />
+    <nav class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">P</span
+        ><span class="brand-name">Purple<span>Point</span></span>
+      </div>
+      <div class="topbar-actions">
+        <button type="button" onclick="history.back()">← Back</button>
+      </div>
+    </nav>
+    <main class="page-shell">
+      <div class="page-container">
+        <div id="view-choose" class="view active">
+          <header class="page-heading">
+            <h1>Appointments</h1>
+            <p>Choose what you would like to do.</p>
+          </header>
+          <div class="choice-grid">
+            <button type="button" id="btn-add">Add Appointment</button>
+            <button type="button" id="btn-view">View Appointments</button>
+            <button type="button" id="btn-cancel">Cancel Appointment</button>
+          </div>
         </div>
-        <input name="appointment_date" type="datetime-local" required /><br />
-        <select name="appointment_type" required>
-          <option value="">Select Appointment Type</option>
-          <option value="consultation">Consultation</option>
-          <option value="cleaning">Cleaning</option>
-          <option value="filling">Filling</option>
-          <option value="extraction">Extraction</option>
-          <option value="other">Other</option></select
-        ><br />
-        <select name="dentist_id" required>
-          <option value="">Select Doctor</option></select
-        ><br />
-        <div id="appointment-status-field">
-          <select name="appointment_status">
-            <option value="scheduled" selected>Scheduled</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option></select
-          ><br />
+
+        <div id="view-add" class="view">
+          <button id="back-from-add" type="button" class="secondary">
+            ← Back
+          </button>
+          <section class="card form-card" style="margin-top: 18px">
+            <h2>Book an Appointment</h2>
+            <form id="add-appointment-form" style="display: grid; gap: 16px">
+              <div id="patient-id-field">
+                <input
+                  name="patient_id"
+                  type="number"
+                  placeholder="Patient ID"
+                />
+              </div>
+              <div class="field-group">
+                <label for="appointment-date">Appointment date and time</label
+                ><input
+                  id="appointment-date"
+                  name="appointment_date"
+                  type="datetime-local"
+                  required
+                />
+              </div>
+              <div class="field-group">
+                <label for="appointment-type">Appointment type</label
+                ><select id="appointment-type" name="appointment_type" required>
+                  <option value="">Select appointment type</option>
+                  <option value="consultation">Consultation</option>
+                  <option value="cleaning">Cleaning</option>
+                  <option value="filling">Filling</option>
+                  <option value="extraction">Extraction</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label for="appointment-doctor">Doctor</label
+                ><select id="appointment-doctor" name="dentist_id" required>
+                  <option value="">Select doctor</option>
+                </select>
+              </div>
+              <div id="appointment-status-field">
+                <select name="appointment_status">
+                  <option value="scheduled" selected>Scheduled</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label for="appointment-reason">Reason for visit</label
+                ><textarea
+                  id="appointment-reason"
+                  name="reason_for_visit"
+                  placeholder="Describe your concern or reason for booking"
+                ></textarea>
+              </div>
+              <div class="actions">
+                <button type="submit">Save Appointment</button>
+              </div>
+            </form>
+            <div
+              id="add-appointment-result"
+              class="form-message"
+              aria-live="polite"
+            ></div>
+          </section>
         </div>
-        <textarea
-          name="reason_for_visit"
-          placeholder="Reason for Visit"
-        ></textarea
-        ><br />
-        <button type="submit">Save Appointment</button>
-      </form>
-      <div id="add-appointment-result" style="margin-top: 16px"></div>
-    </div>
 
-    <div id="view-view" class="view">
-      <button id="back-from-view" type="button">← Back</button>
-      <h2>Appointments</h2>
-      <div id="view-appointment-result" style="margin-top: 16px"></div>
-    </div>
+        <div id="view-view" class="view">
+          <button id="back-from-view" type="button" class="secondary">
+            ← Back
+          </button>
+          <header class="page-heading" style="margin-top: 18px">
+            <h2>Your Appointments</h2>
+            <p>Review your current and previous bookings.</p>
+          </header>
+          <div id="view-appointment-result" class="card"></div>
+        </div>
 
-    <div id="view-cancel" class="view">
-      <button id="back-from-cancel" type="button">← Back</button>
-      <h2>Cancel Appointment</h2>
-      <div id="cancel-appointment-list" style="margin-top: 16px"></div>
-      <div id="cancel-appointment-result" style="margin-top: 16px"></div>
-
-      <div
-        id="cancel-reason-modal"
-        style="
-          display: none;
-          position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.45);
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-        "
-      >
-        <div
-          style="
-            background: #fff;
-            width: min(92vw, 420px);
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
-          "
-        >
-          <h3 style="margin-top: 0">Cancel Appointment</h3>
-          <p id="cancel-modal-title" style="margin-bottom: 12px"></p>
-          <label for="cancel-reason-input">Reason for cancellation</label><br />
-          <textarea
-            id="cancel-reason-input"
+        <div id="view-cancel" class="view">
+          <button id="back-from-cancel" type="button" class="secondary">
+            ← Back
+          </button>
+          <header class="page-heading" style="margin-top: 18px">
+            <h2>Cancel an Appointment</h2>
+            <p>
+              Select an eligible appointment and provide a cancellation reason.
+            </p>
+          </header>
+          <div id="cancel-appointment-list" class="card"></div>
+          <div
+            id="cancel-appointment-result"
+            class="form-message"
+            aria-live="polite"
+          ></div>
+          <div
+            id="cancel-reason-modal"
             style="
-              width: 100%;
-              min-height: 90px;
-              margin-top: 8px;
-              box-sizing: border-box;
+              display: none;
+              position: fixed;
+              inset: 0;
+              background: rgba(30, 17, 48, 0.6);
+              align-items: center;
+              justify-content: center;
+              z-index: 1000;
             "
-            placeholder="Enter reason for cancellation"
-            required
-          ></textarea>
-          <div style="display: flex; gap: 8px; margin-top: 16px">
-            <button type="button" id="confirm-cancel-btn">Confirm</button>
-            <button type="button" id="close-cancel-modal-btn">Close</button>
+          >
+            <div class="card" style="width: min(92vw, 440px); margin: 0">
+              <h3>Cancel Appointment</h3>
+              <p id="cancel-modal-title"></p>
+              <div class="field-group">
+                <label for="cancel-reason-input">Reason for cancellation</label
+                ><textarea
+                  id="cancel-reason-input"
+                  placeholder="Enter reason for cancellation"
+                  required
+                ></textarea>
+              </div>
+              <div class="actions">
+                <button type="button" id="confirm-cancel-btn">
+                  Confirm Cancellation</button
+                ><button
+                  type="button"
+                  id="close-cancel-modal-btn"
+                  class="secondary"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-
+    </main>
     <script src="/js/appointments.js"></script>
   </body>
 </html>

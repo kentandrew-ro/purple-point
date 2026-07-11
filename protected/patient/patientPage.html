@@ -3,98 +3,68 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Patient Page</title>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 2rem;
-        background: #f5f3fb;
-      }
-      h1 {
-        margin-top: 0;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        background: #fff;
-        margin-top: 1rem;
-      }
-      th,
-      td {
-        text-align: left;
-        padding: 0.75rem 1rem;
-        border-bottom: 1px solid #eee;
-      }
-      th {
-        font-size: 0.8rem;
-        color: #555;
-        text-transform: uppercase;
-      }
-      .status {
-        padding: 2px 10px;
-        border-radius: 12px;
-        font-size: 0.8rem;
-        font-weight: 600;
-      }
-      .status-scheduled {
-        background: #d9f2e6;
-        color: #1f8a4c;
-      }
-      .status-completed {
-        background: #dbe6ff;
-        color: #2b4fb0;
-      }
-      .status-cancelled {
-        background: #f3d9d9;
-        color: #a83232;
-      }
-      .cancel-btn {
-        background: #fff;
-        border: 1px solid #6b3fa0;
-        color: #6b3fa0;
-        padding: 6px 14px;
-        border-radius: 6px;
-        cursor: pointer;
-      }
-      .cancel-btn:hover {
-        background: #6b3fa0;
-        color: #fff;
-      }
-      .cancel-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-      #appointmentsEmpty {
-        padding: 1rem;
-        color: #666;
-      }
-    </style>
+    <title>Patient Home - PurplePoint</title>
+    <link rel="stylesheet" href="/public_css/styles.css" />
   </head>
   <body>
-    <h1>Welcome Patient</h1>
-    <a href="/profile.html">complete profile</a>
-    <a href="/appointments.html">appointments</a>
-    <br /><br />
-    <button onclick="signOut()">Sign Out</button>
-
-    <h2>Upcoming Appointments</h2>
-    <div id="appointmentsEmpty" style="display: none">
-      No upcoming appointments.
-    </div>
-    <table id="appointmentsTable" style="display: none">
-      <thead>
-        <tr>
-          <th>Date &amp; Time</th>
-          <th>Doctor</th>
-          <th>Reason</th>
-          <th>Status</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody id="appointmentsBody"></tbody>
-    </table>
-
+    <nav class="topbar">
+      <a class="brand" href="/patientPage.html" aria-label="PurplePoint home">
+        <span class="brand-mark" aria-hidden="true">P</span>
+        <span class="brand-name" style="color: #fff"
+          >Purple<span>Point</span></span
+        >
+      </a>
+      <div class="topbar-actions">
+        <button onclick="signOut()">Sign Out</button>
+      </div>
+    </nav>
+    <header class="hero">
+      <div class="page-container">
+        <h1>Welcome, Patient</h1>
+        <p>Manage your profile and upcoming dental visits in one place.</p>
+      </div>
+    </header>
+    <main class="page-shell">
+      <div class="page-container">
+        <section class="quick-actions" aria-label="Patient actions">
+          <article class="action-card">
+            <h3>My Patient Profile</h3>
+            <p>Complete or update the information your care team needs.</p>
+            <a class="button" href="/profile.html">Open Profile</a>
+          </article>
+          <article class="action-card">
+            <h3>Appointments</h3>
+            <p>
+              Book a visit, review your appointments, or request a cancellation.
+            </p>
+            <a class="button" href="/appointments.html">Manage Appointments</a>
+          </article>
+        </section>
+        <section>
+          <div class="page-heading">
+            <h2>Upcoming Appointments</h2>
+            <p>Your currently scheduled dental visits.</p>
+          </div>
+          <div id="appointmentsEmpty" class="card" style="display: none">
+            No upcoming appointments.
+          </div>
+          <div class="table-scroll">
+            <table id="appointmentsTable" style="display: none">
+              <thead>
+                <tr>
+                  <th>Date &amp; Time</th>
+                  <th>Doctor</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="appointmentsBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
     <script src="/js/patientPage.js"></script>
   </body>
 </html>
