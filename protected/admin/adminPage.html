@@ -13,7 +13,10 @@
         <small>Admin</small>
       </div>
       <div class="admin-account">
-        <span>Admin</span>
+        <div class="current-user">
+          <strong data-current-user-name>Loading...</strong>
+          <small data-current-user-role>Admin</small>
+        </div>
         <button type="button" onclick="signOut()">Sign Out</button>
       </div>
     </header>
@@ -1018,6 +1021,7 @@
     </div>
 
     <!-- <script src="/js/add_doctor_staff_profile.js"></script> -->
+    <script src="/public_js/currentUser.js"></script>
     <script src="/js/appointments.js"></script>
     <script src="/js/adminPage.js"></script>
   </body>

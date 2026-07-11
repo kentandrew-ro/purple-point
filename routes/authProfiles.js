@@ -87,11 +87,35 @@ function registerAuthProfileRoutes(app) {
     });
   });
 
-  app.get("/api/me", (req, res) => {
+  app.get("/api/me", async (req, res) => {
     if (!req.session.userId) {
       return res.status(401).json({ error: "Not logged in" });
     }
-    res.json({ userId: req.session.userId, role: req.session.role });
+
+    try {
+      const [rows] = await pool.execute(
+        `SELECT first_name, last_name, username, role
+         FROM users
+         WHERE user_id = ?`,
+        [req.session.userId],
+      );
+
+      if (!rows.length) {
+        return res.status(404).json({ error: "User account not found" });
+      }
+
+      const user = rows[0];
+      return res.json({
+        userId: req.session.userId,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        username: user.username,
+        role: user.role || req.session.role,
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
+    }
   });
 
   app.get("/api/patients/me", async (req, res) => {

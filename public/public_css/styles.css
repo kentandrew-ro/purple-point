@@ -269,6 +269,26 @@ label {
   align-items: center;
   gap: 10px;
 }
+.current-user {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.2;
+}
+.current-user strong {
+  max-width: 220px;
+  overflow: hidden;
+  color: #fff;
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.current-user small {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.68rem;
+  font-weight: 500;
+}
 .topbar button,
 .topbar .button {
   min-height: 36px;

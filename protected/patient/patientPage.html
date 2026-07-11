@@ -14,6 +14,10 @@
         >
       </a>
       <div class="topbar-actions">
+        <div class="current-user">
+          <strong data-current-user-name>Loading...</strong>
+          <small data-current-user-role>Patient</small>
+        </div>
         <button onclick="signOut()">Sign Out</button>
       </div>
     </nav>
@@ -64,6 +68,7 @@
         </section>
       </div>
     </main>
+    <script src="/public_js/currentUser.js"></script>
     <script src="/js/patientPage.js"></script>
   </body>
 </html>
