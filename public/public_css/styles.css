@@ -224,6 +224,9 @@ label {
 .auth-card {
   width: min(100%, 420px);
 }
+.auth-card.profile-completion {
+  width: min(100%, 760px);
+}
 .auth-card > p {
   margin: -10px 0 25px;
 }
@@ -249,6 +252,24 @@ label {
 .form-message {
   min-height: 24px;
   margin-top: 12px;
+}
+.form-message.error,
+.required-profile-message,
+.profile-required-message {
+  color: #b42318;
+  font-weight: 700;
+}
+.profile-required-message a {
+  color: inherit;
+  text-decoration: underline;
+}
+.form-message.success {
+  color: #237a4b;
+  font-weight: 700;
+}
+.form-section-title {
+  margin: 8px 0 0;
+  font-size: 1rem;
 }
 
 .topbar {

@@ -82,8 +82,23 @@ async function loadSchedule() {
 }
 
 async function signOut() {
-  await fetch("/api/logout", { method: "POST" });
-  window.location.href = "/login.html";
+  const button = document.getElementById("sign-out-button");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Signing Out...";
+  }
+  try {
+    const response = await fetch("/api/logout", { method: "POST" });
+    if (!response.ok) throw new Error("Sign out failed");
+    window.location.replace("/login.html");
+  } catch (error) {
+    console.error(error);
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Try Sign Out Again";
+      button.title = "PurplePoint could not sign you out. Please try again.";
+    }
+  }
 }
 
 loadStats();
@@ -1354,13 +1369,14 @@ function renderVitalsTable(vitals) {
   const tbody = document.getElementById("vitals-body");
   if (!tbody) return;
   if (!vitals || !vitals.length) {
-    tbody.innerHTML = "<tr><td colspan='5'>No vitals recorded.</td></tr>";
+    tbody.innerHTML = "<tr><td colspan='6'>No vitals recorded.</td></tr>";
     return;
   }
   tbody.innerHTML = vitals
     .map(
       (v) => `
       <tr>
+        <td>${v.appointment_id ? `#${escapeHtml(v.appointment_id)} · ${escapeHtml(formatDentalDate(v.appointment_date))}` : "Unlinked (legacy)"}</td>
         <td>${escapeHtml(formatDentalDate(v.date))}</td>
         <td>${escapeHtml(v.bp)}</td>
         <td>${escapeHtml(v.pulse)}</td>
@@ -1414,6 +1430,7 @@ async function loadDentalPatientRecord(patientId) {
     renderTreatmentsTable(data.treatments);
     renderVitalsTable(data.vitals);
     loadPatientAppointmentsForTreatmentForm(dentalCurrentPatientId);
+    loadPatientAppointmentsForVitalsForm(dentalCurrentPatientId);
 
     showDentalSubtab("tooth-chart");
 
@@ -1440,7 +1457,7 @@ async function loadPatientAppointmentsForTreatmentForm(patientId) {
     if (!res.ok || !data.ok) return;
 
     (data.appointments || []).forEach((a) => {
-      if (a.has_dental_record) return; // already tied to a record
+      if (a.has_treatment) return;
       const opt = document.createElement("option");
       opt.value = a.appointment_id;
       opt.dataset.dentistId = a.dentist_id || "";
@@ -1454,6 +1471,31 @@ async function loadPatientAppointmentsForTreatmentForm(patientId) {
     });
   } catch (err) {
     console.error(err);
+  }
+}
+
+async function loadPatientAppointmentsForVitalsForm(patientId) {
+  const select = document.getElementById("vitals_appointment");
+  if (!select || !patientId) return;
+
+  select.innerHTML = '<option value="">Select appointment</option>';
+
+  try {
+    const res = await fetch(
+      `/api/appointments/patient/${encodeURIComponent(patientId)}`,
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) return;
+
+    (data.appointments || []).forEach((appointment) => {
+      const option = document.createElement("option");
+      option.value = appointment.appointment_id;
+      option.dataset.date = appointment.appointment_date || "";
+      option.textContent = `#${appointment.appointment_id} - ${formatDentalDate(appointment.appointment_date)} - ${appointment.appointment_type} (${appointment.appointment_status})`;
+      select.appendChild(option);
+    });
+  } catch (error) {
+    console.error(error);
   }
 }
 
@@ -1676,6 +1718,9 @@ function initDentalRecordsTab() {
   const btnRecordVitals = document.getElementById("btn-record-vitals");
   const recordVitalsCard = document.getElementById("record-vitals-card");
   const recordVitalsForm = document.getElementById("record-vitals-form");
+  const vitalsAppointmentSelect = document.getElementById(
+    "vitals_appointment",
+  );
   const btnCancelRecordVitals = document.getElementById(
     "btn-cancel-record-vitals",
   );
@@ -1694,6 +1739,15 @@ function initDentalRecordsTab() {
     });
   }
 
+  if (vitalsAppointmentSelect) {
+    vitalsAppointmentSelect.addEventListener("change", () => {
+      const option = vitalsAppointmentSelect.selectedOptions[0];
+      if (option?.dataset.date) {
+        document.getElementById("vitals_date").value = option.dataset.date;
+      }
+    });
+  }
+
   if (recordVitalsForm) {
     recordVitalsForm.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -1701,6 +1755,7 @@ function initDentalRecordsTab() {
 
       const payload = {
         patient_id: dentalCurrentPatientId,
+        appointment_id: document.getElementById("vitals_appointment").value,
         date_recorded: document.getElementById("vitals_date").value,
         blood_pressure: document.getElementById("vitals_bp").value,
         heart_rate: document.getElementById("vitals_pulse").value,

@@ -1,3 +1,59 @@
+"use strict";
+
+const APPOINTMENT_DRAFT_FIELDS = [
+  "appointment_date",
+  "appointment_type",
+  "dentist_id",
+  "reason_for_visit",
+];
+
+let appointmentDraftKey = null;
+
+function readAppointmentDraft() {
+  if (!appointmentDraftKey) return {};
+  try {
+    return JSON.parse(localStorage.getItem(appointmentDraftKey) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function restoreAppointmentDraft(form) {
+  const draft = readAppointmentDraft();
+  APPOINTMENT_DRAFT_FIELDS.forEach((name) => {
+    if (form.elements[name] && draft[name] !== undefined) {
+      form.elements[name].value = draft[name];
+    }
+  });
+}
+
+function autosaveAppointmentDraft(form) {
+  if (!appointmentDraftKey) return;
+  const draft = {};
+  APPOINTMENT_DRAFT_FIELDS.forEach((name) => {
+    draft[name] = form.elements[name]?.value || "";
+  });
+  try {
+    localStorage.setItem(appointmentDraftKey, JSON.stringify(draft));
+    const resultBox = document.getElementById("add-appointment-result");
+    resultBox.textContent = "Appointment details saved automatically on this device.";
+    resultBox.classList.remove("error", "success");
+  } catch {}
+}
+
+function blockAppointmentBookingUntilProfileIsComplete() {
+  const warning = document.getElementById("appointment-profile-warning");
+  const addButton = document.getElementById("btn-add");
+  if (warning) warning.hidden = false;
+  if (addButton) {
+    addButton.disabled = true;
+    addButton.setAttribute(
+      "aria-describedby",
+      "appointment-profile-warning",
+    );
+  }
+}
+
 function showView(id) {
   document
     .querySelectorAll(".view")
@@ -388,6 +444,7 @@ async function handleAddSubmit(event) {
     document
       .getElementById("add-back-success")
       .addEventListener("click", () => showView("view-choose"));
+    if (appointmentDraftKey) localStorage.removeItem(appointmentDraftKey);
     form.reset();
   } catch (err) {
     resultBox.innerHTML = `<h2>Error</h2><p>${escapeHtml(err?.message || "Unknown error")}</p>`;
@@ -459,11 +516,12 @@ async function handleCancelSubmit(event) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  let currentUser = null;
   try {
     const meRes = await fetch("/api/me");
     if (meRes.ok) {
-      const me = await meRes.json();
-      if (me.role === "admin") {
+      currentUser = await meRes.json();
+      if (currentUser.role === "admin") {
         const field = document.getElementById("patient-id-field");
         if (field) field.style.display = "block";
         const input = field?.querySelector("input");
@@ -471,11 +529,33 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const statusField = document.getElementById("appointment-status-field");
         if (statusField) statusField.style.display = "block";
+      } else {
+        appointmentDraftKey = `purplepoint:appointment-draft:${currentUser.userId}`;
+
+        const profileResponse = await fetch("/api/patients/me");
+        const profileData = await profileResponse.json().catch(() => ({}));
+        if (!profileResponse.ok || !profileData.profileComplete) {
+          blockAppointmentBookingUntilProfileIsComplete();
+        }
       }
     }
-  } catch {}
+  } catch {
+    if (currentUser?.role !== "admin") {
+      blockAppointmentBookingUntilProfileIsComplete();
+    }
+  }
 
-  populateDentistDropdown();
+  await populateDentistDropdown();
+
+  const addForm = document.getElementById("add-appointment-form");
+  if (addForm) {
+    restoreAppointmentDraft(addForm);
+    addForm.addEventListener("submit", handleAddSubmit);
+    addForm.addEventListener("input", () => autosaveAppointmentDraft(addForm));
+    addForm.addEventListener("change", () =>
+      autosaveAppointmentDraft(addForm),
+    );
+  }
 
   document.getElementById("btn-add")?.addEventListener("click", () => {
     showView("view-add");
@@ -517,8 +597,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     .getElementById("back-from-view")
     ?.addEventListener("click", () => showView("view-choose"));
 
-  const addForm = document.getElementById("add-appointment-form");
-  if (addForm) addForm.addEventListener("submit", handleAddSubmit);
   document
     .getElementById("back-from-add")
     ?.addEventListener("click", () => showView("view-choose"));

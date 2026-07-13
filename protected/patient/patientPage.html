@@ -18,7 +18,9 @@
           <strong data-current-user-name>Loading...</strong>
           <small data-current-user-role>Patient</small>
         </div>
-        <button onclick="signOut()">Sign Out</button>
+        <button type="button" id="sign-out-button" onclick="signOut()">
+          Sign Out
+        </button>
       </div>
     </nav>
     <header class="hero">
@@ -39,6 +41,14 @@
             <h3>Appointments</h3>
             <p>
               Book a visit, review your appointments, or request a cancellation.
+            </p>
+            <p
+              id="profile-required-message"
+              class="profile-required-message"
+              hidden
+            >
+              You must complete your patient profile before making
+              appointments.
             </p>
             <a class="button" href="/appointments.html">Manage Appointments</a>
           </article>

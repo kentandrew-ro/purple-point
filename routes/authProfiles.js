@@ -10,7 +10,10 @@ const {
 } = require("../lib/businessRules");
 const { createAuditLog, recordAudit } = require("../lib/audit");
 
-function registerAuthProfileRoutes(app) {
+function registerAuthProfileRoutes(
+  app,
+  { sessionCookieName = "purplepoint.sid", isProduction = false } = {},
+) {
   app.post("/api/signup", async (req, res) => {
     const { firstName, lastName, username, email, password, contactNumber } =
       req.body;
@@ -69,9 +72,20 @@ function registerAuthProfileRoutes(app) {
         await new Promise((resolve, reject) => {
           req.session.save((error) => (error ? reject(error) : resolve()));
         });
-        return res
-          .status(200)
-          .json({ message: "Login successful!", role: user.role });
+        let profileComplete = true;
+        if (user.role === "patient") {
+          const [profiles] = await pool.execute(
+            "SELECT patient_id FROM patients WHERE user_id = ? LIMIT 1",
+            [user.user_id],
+          );
+          profileComplete = profiles.length > 0;
+        }
+
+        return res.status(200).json({
+          message: "Login successful!",
+          role: user.role,
+          profileComplete,
+        });
       } else {
         return res.status(401).json({ error: "Invalid username or password." });
       }
@@ -87,10 +101,10 @@ function registerAuthProfileRoutes(app) {
         console.error(error);
         return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
       }
-      res.clearCookie(SESSION_COOKIE_NAME, {
+      res.clearCookie(sessionCookieName, {
         httpOnly: true,
         sameSite: "lax",
-        secure: IS_PRODUCTION,
+        secure: isProduction,
         path: "/",
       });
       return res.json({ message: "Logged out successfully." });
@@ -104,7 +118,7 @@ function registerAuthProfileRoutes(app) {
 
     try {
       const [rows] = await pool.execute(
-        `SELECT first_name, last_name, username, role
+        `SELECT first_name, last_name, username, email, contact_number, role
          FROM users
          WHERE user_id = ?`,
         [req.session.userId],
@@ -120,6 +134,8 @@ function registerAuthProfileRoutes(app) {
         firstName: user.first_name,
         lastName: user.last_name,
         username: user.username,
+        email: user.email,
+        contactNumber: user.contact_number,
         role: user.role || req.session.role,
       });
     } catch (error) {
@@ -136,17 +152,21 @@ function registerAuthProfileRoutes(app) {
     try {
       const [rows] = await pool.execute(
         `SELECT p.*, u.first_name, u.last_name, u.contact_number, u.email
-         FROM patients p
-         LEFT JOIN users u ON u.user_id = p.user_id
-         WHERE p.user_id = ?`,
+         FROM users u
+         LEFT JOIN patients p ON p.user_id = u.user_id
+         WHERE u.user_id = ?`,
         [req.session.userId],
       );
 
       if (!rows.length) {
-        return res.status(404).json({ ok: false, error: "No profile found" });
+        return res.status(404).json({ ok: false, error: "User not found" });
       }
 
-      return res.json({ ok: true, patient: rows[0] });
+      return res.json({
+        ok: true,
+        profileComplete: Boolean(rows[0].patient_id),
+        patient: rows[0],
+      });
     } catch (err) {
       console.error(err);
       return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });

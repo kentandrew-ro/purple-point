@@ -1,6 +1,33 @@
 async function signOut() {
-  await fetch("/api/logout", { method: "POST" });
-  window.location.href = "/login.html";
+  const button = document.getElementById("sign-out-button");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Signing Out...";
+  }
+  try {
+    const response = await fetch("/api/logout", { method: "POST" });
+    if (!response.ok) throw new Error("Sign out failed");
+    window.location.replace("/login.html");
+  } catch (error) {
+    console.error(error);
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Try Sign Out Again";
+      button.title = "PurplePoint could not sign you out. Please try again.";
+    }
+  }
+}
+
+async function loadProfileRequirement() {
+  const warning = document.getElementById("profile-required-message");
+  if (!warning) return;
+  try {
+    const response = await fetch("/api/patients/me");
+    const data = await response.json().catch(() => ({}));
+    warning.hidden = response.ok && data.profileComplete;
+  } catch {
+    warning.hidden = false;
+  }
 }
 
 function formatDateTime(dateStr, timeStr) {
@@ -168,4 +195,7 @@ async function cancelAppointment(appointmentId, btn) {
   }
 }
 
-document.addEventListener("DOMContentLoaded", loadAppointments);
+document.addEventListener("DOMContentLoaded", () => {
+  loadProfileRequirement();
+  loadAppointments();
+});

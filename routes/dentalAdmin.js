@@ -5,6 +5,7 @@ const { INTERNAL_ERROR_MESSAGE, requireField } = require("../lib/http");
 const {
   getDoctorProfileValidationError,
   isIsoDate,
+  parsePositiveInteger,
   validateGender,
 } = require("../lib/businessRules");
 const { recordAudit } = require("../lib/audit");
@@ -203,6 +204,11 @@ function registerDentalAdminRoutes(app) {
            DATE_FORMAT(a.appointment_date, '%Y-%m-%d') AS appointment_date,
            DATE_FORMAT(a.appointment_time, '%H:%i:%s') AS appointment_time,
            a.appointment_type, a.appointment_status,
+           dr.dental_record_id,
+           EXISTS(
+             SELECT 1 FROM patient_treatments pt
+             WHERE pt.dental_record_id = dr.dental_record_id
+           ) AS has_treatment,
            (dr.dental_record_id IS NOT NULL) AS has_dental_record
          FROM appointments a
          LEFT JOIN dentist d ON d.dentist_id = a.dentist_id
@@ -266,10 +272,14 @@ function registerDentalAdminRoutes(app) {
 
       const [vitalsRows] = await pool.execute(
         `SELECT
+           dr.appointment_id,
+           DATE_FORMAT(a.appointment_date, '%Y-%m-%d') AS appointment_date,
+           DATE_FORMAT(a.appointment_time, '%H:%i:%s') AS appointment_time,
            DATE_FORMAT(pv.date_recorded, '%Y-%m-%d') AS date_recorded,
            pv.blood_pressure, pv.heart_rate, pv.temperature, pv.weight
          FROM patient_vitals pv
          JOIN dental_records dr ON dr.dental_record_id = pv.dental_record_id
+         LEFT JOIN appointments a ON a.appointment_id = dr.appointment_id
          WHERE dr.patient_id = ?
          ORDER BY pv.date_recorded DESC, pv.patient_vitals_id DESC`,
         [patientId],
@@ -329,6 +339,9 @@ function registerDentalAdminRoutes(app) {
           category: row.category || null,
         })),
         vitals: vitalsRows.map((row) => ({
+          appointment_id: row.appointment_id,
+          appointment_date: row.appointment_date,
+          appointment_time: row.appointment_time,
           date: row.date_recorded,
           bp: row.blood_pressure || "—",
           pulse: row.heart_rate || "—",
@@ -373,12 +386,10 @@ function registerDentalAdminRoutes(app) {
       if (!procedure) missing.push("procedure");
 
       if (missing.length) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: `Missing field(s): ${missing.join(", ")}`,
-          });
+        return res.status(400).json({
+          ok: false,
+          error: `Missing field(s): ${missing.join(", ")}`,
+        });
       }
 
       const [existing] = await pool.execute(
@@ -512,18 +523,17 @@ function registerDentalAdminRoutes(app) {
       const duration =
         duration_raw !== null ? parseInt(duration_raw, 10) : null;
       const category = requireField(body, "category") || "dental";
+      let linkedDentalRecordId = null;
 
       const missing = [];
       if (!patient_id) missing.push("patient_id");
       if (!procedure) missing.push("procedure");
 
       if (missing.length) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: `Missing field(s): ${missing.join(", ")}`,
-          });
+        return res.status(400).json({
+          ok: false,
+          error: `Missing field(s): ${missing.join(", ")}`,
+        });
       }
 
       const [patients] = await pool.execute(
@@ -538,9 +548,16 @@ function registerDentalAdminRoutes(app) {
       // borrow its date/dentist for anything the admin didn't fill in.
       if (appointment_id) {
         const [appointmentRows] = await pool.execute(
-          `SELECT appointment_id, patient_id, dentist_id,
-                  DATE_FORMAT(appointment_date, '%Y-%m-%d') AS appointment_date
-           FROM appointments WHERE appointment_id = ?`,
+          `SELECT a.appointment_id, a.patient_id, a.dentist_id,
+                  DATE_FORMAT(a.appointment_date, '%Y-%m-%d') AS appointment_date,
+                  dr.dental_record_id,
+                  EXISTS(
+                    SELECT 1 FROM patient_treatments pt
+                    WHERE pt.dental_record_id = dr.dental_record_id
+                  ) AS has_treatment
+           FROM appointments a
+           LEFT JOIN dental_records dr ON dr.appointment_id = a.appointment_id
+           WHERE a.appointment_id = ?`,
           [appointment_id],
         );
         if (!appointmentRows.length) {
@@ -554,18 +571,23 @@ function registerDentalAdminRoutes(app) {
             error: "That appointment does not belong to this patient.",
           });
         }
+        if (appointmentRows[0].has_treatment) {
+          return res.status(409).json({
+            ok: false,
+            error: "This appointment already has a treatment.",
+          });
+        }
+        linkedDentalRecordId = appointmentRows[0].dental_record_id || null;
         if (!dentist_id) dentist_id = appointmentRows[0].dentist_id;
         if (!visit_date) visit_date = appointmentRows[0].appointment_date;
       }
 
       if (!visit_date) missing.push("visit_date");
       if (missing.length) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: `Missing field(s): ${missing.join(", ")}`,
-          });
+        return res.status(400).json({
+          ok: false,
+          error: `Missing field(s): ${missing.join(", ")}`,
+        });
       }
 
       if (dentist_id) {
@@ -584,20 +606,31 @@ function registerDentalAdminRoutes(app) {
       // admin (staff, dentist, or plain admin) can record entries.
       const recorded_by = req.session.userId;
 
-      const [result] = await pool.execute(
-        `INSERT INTO dental_records
-           (patient_id, appointment_id, dentist_id, recorded_by, visit_date, treatment_plan_notes, teeth_involved)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          patient_id,
-          appointment_id,
-          dentist_id,
-          recorded_by,
-          visit_date,
-          procedure,
-          teeth_involved,
-        ],
-      );
+      let dentalRecordId = linkedDentalRecordId;
+      if (dentalRecordId) {
+        await pool.execute(
+          `UPDATE dental_records
+           SET dentist_id = ?, visit_date = ?, treatment_plan_notes = ?, teeth_involved = ?
+           WHERE dental_record_id = ?`,
+          [dentist_id, visit_date, procedure, teeth_involved, dentalRecordId],
+        );
+      } else {
+        const [result] = await pool.execute(
+          `INSERT INTO dental_records
+             (patient_id, appointment_id, dentist_id, recorded_by, visit_date, treatment_plan_notes, teeth_involved)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            patient_id,
+            appointment_id,
+            dentist_id,
+            recorded_by,
+            visit_date,
+            procedure,
+            teeth_involved,
+          ],
+        );
+        dentalRecordId = result.insertId;
+      }
 
       if (appointment_id) {
         await pool.execute(
@@ -618,7 +651,7 @@ function registerDentalAdminRoutes(app) {
            (dental_record_id, treatment_id, teeth_involved, actual_price, actual_duration)
          VALUES (?, ?, ?, ?, ?)`,
         [
-          result.insertId,
+          dentalRecordId,
           newTreatment.insertId,
           teeth_involved,
           price,
@@ -629,8 +662,8 @@ function registerDentalAdminRoutes(app) {
       await recordAudit(req, {
         action: "CREATE_DENTAL_RECORD",
         entityType: "dental_record",
-        entityId: result.insertId,
-        description: `Created dental record #${result.insertId} for patient #${patient_id}`,
+        entityId: dentalRecordId,
+        description: `${linkedDentalRecordId ? "Updated" : "Created"} dental record #${dentalRecordId} for patient #${patient_id}`,
         newValues: {
           patient_id,
           appointment_id,
@@ -661,7 +694,7 @@ function registerDentalAdminRoutes(app) {
       return res.status(201).json({
         ok: true,
         treatment: {
-          treatment_id: result.insertId,
+          treatment_id: dentalRecordId,
           dentist_id: dentist_id,
           date: visit_date,
           procedure,
@@ -685,10 +718,13 @@ function registerDentalAdminRoutes(app) {
     if (req.session.role !== "admin")
       return res.status(403).json({ error: "Forbidden" });
 
+    let conn;
     try {
       const body = req.body || {};
       const patient_id = parseInt(requireField(body, "patient_id"), 10);
-      const dental_record_id_raw = requireField(body, "dental_record_id");
+      const appointment_id = parsePositiveInteger(
+        requireField(body, "appointment_id"),
+      );
       const date_recorded = requireField(body, "date_recorded");
       const blood_pressure = requireField(body, "blood_pressure") || null;
       const heart_rate = requireField(body, "heart_rate") || null;
@@ -697,15 +733,14 @@ function registerDentalAdminRoutes(app) {
 
       const missing = [];
       if (!patient_id) missing.push("patient_id");
+      if (!appointment_id) missing.push("appointment_id");
       if (!date_recorded) missing.push("date_recorded");
 
       if (missing.length) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: `Missing field(s): ${missing.join(", ")}`,
-          });
+        return res.status(400).json({
+          ok: false,
+          error: `Missing field(s): ${missing.join(", ")}`,
+        });
       }
 
       const [patients] = await pool.execute(
@@ -720,31 +755,53 @@ function registerDentalAdminRoutes(app) {
       // admin (staff, dentist, or plain admin) can record vitals.
       const staff_id = req.session.userId;
 
-      let dental_record_id = dental_record_id_raw
-        ? parseInt(dental_record_id_raw, 10)
-        : null;
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
 
-      if (!dental_record_id) {
-        const [latestRecord] = await pool.execute(
-          `SELECT dental_record_id FROM dental_records
-           WHERE patient_id = ?
-           ORDER BY visit_date DESC, dental_record_id DESC
-           LIMIT 1`,
-          [patient_id],
-        );
-        if (latestRecord.length) {
-          dental_record_id = latestRecord[0].dental_record_id;
-        } else {
-          const [newRecord] = await pool.execute(
-            `INSERT INTO dental_records (patient_id, recorded_by, visit_date)
-             VALUES (?, ?, CURDATE())`,
-            [patient_id, req.session.userId],
-          );
-          dental_record_id = newRecord.insertId;
-        }
+      const [appointmentRows] = await conn.execute(
+        `SELECT a.appointment_id, a.patient_id, a.dentist_id,
+                DATE_FORMAT(a.appointment_date, '%Y-%m-%d') AS appointment_date,
+                dr.dental_record_id
+         FROM appointments a
+         LEFT JOIN dental_records dr ON dr.appointment_id = a.appointment_id
+         WHERE a.appointment_id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [appointment_id],
+      );
+
+      if (!appointmentRows.length) {
+        await conn.rollback();
+        return res
+          .status(404)
+          .json({ ok: false, error: "Appointment not found." });
+      }
+      if (appointmentRows[0].patient_id !== patient_id) {
+        await conn.rollback();
+        return res.status(400).json({
+          ok: false,
+          error: "That appointment does not belong to this patient.",
+        });
       }
 
-      await pool.execute(
+      let dental_record_id = appointmentRows[0].dental_record_id;
+      if (!dental_record_id) {
+        const [newRecord] = await conn.execute(
+          `INSERT INTO dental_records
+             (patient_id, appointment_id, dentist_id, recorded_by, visit_date)
+           VALUES (?, ?, ?, ?, ?)`,
+          [
+            patient_id,
+            appointment_id,
+            appointmentRows[0].dentist_id,
+            staff_id,
+            appointmentRows[0].appointment_date,
+          ],
+        );
+        dental_record_id = newRecord.insertId;
+      }
+
+      await conn.execute(
         `INSERT INTO patient_vitals
            (dental_record_id, staff_id, date_recorded, blood_pressure, heart_rate, temperature, weight)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -758,10 +815,12 @@ function registerDentalAdminRoutes(app) {
           weight,
         ],
       );
+      await conn.commit();
 
       return res.status(201).json({
         ok: true,
         vitals: {
+          appointment_id,
           date: date_recorded,
           bp: blood_pressure || "—",
           pulse: heart_rate || "—",
@@ -770,8 +829,15 @@ function registerDentalAdminRoutes(app) {
         },
       });
     } catch (err) {
+      if (conn) {
+        try {
+          await conn.rollback();
+        } catch (_) {}
+      }
       console.error(err);
       return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    } finally {
+      if (conn) conn.release();
     }
   });
 
@@ -793,12 +859,10 @@ function registerDentalAdminRoutes(app) {
       if (!condition_status) missing.push("condition_status");
 
       if (missing.length) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: `Missing field(s): ${missing.join(", ")}`,
-          });
+        return res.status(400).json({
+          ok: false,
+          error: `Missing field(s): ${missing.join(", ")}`,
+        });
       }
 
       if (tooth_number < 1 || tooth_number > 32) {
@@ -952,12 +1016,10 @@ function registerDentalAdminRoutes(app) {
       }
 
       if (missing.length) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: `Missing field(s): ${missing.join(", ")}`,
-          });
+        return res.status(400).json({
+          ok: false,
+          error: `Missing field(s): ${missing.join(", ")}`,
+        });
       }
 
       if (!["doctor", "staff"].includes(role)) {

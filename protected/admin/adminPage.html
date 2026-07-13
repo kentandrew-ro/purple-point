@@ -17,7 +17,9 @@
           <strong data-current-user-name>Loading...</strong>
           <small data-current-user-role>Admin</small>
         </div>
-        <button type="button" onclick="signOut()">Sign Out</button>
+        <button type="button" id="sign-out-button" onclick="signOut()">
+          Sign Out
+        </button>
       </div>
     </header>
 
@@ -488,6 +490,12 @@
               <form id="record-vitals-form">
                 <div class="row">
                   <div class="field">
+                    <label for="vitals_appointment">Appointment</label>
+                    <select id="vitals_appointment" required>
+                      <option value="">Select appointment</option>
+                    </select>
+                  </div>
+                  <div class="field">
                     <label for="vitals_date">Date</label>
                     <input id="vitals_date" type="date" required />
                   </div>
@@ -535,6 +543,7 @@
             <table id="vitals-table">
               <thead>
                 <tr>
+                  <th>Appointment</th>
                   <th>Date</th>
                   <th>Blood Pressure</th>
                   <th>Pulse</th>
@@ -544,7 +553,7 @@
               </thead>
               <tbody id="vitals-body">
                 <tr>
-                  <td colspan="5">No patient selected.</td>
+                  <td colspan="6">No patient selected.</td>
                 </tr>
               </tbody>
             </table>

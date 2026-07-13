@@ -51,7 +51,10 @@ app.use(
   }),
 );
 
-registerAuthProfileRoutes(app);
+registerAuthProfileRoutes(app, {
+  sessionCookieName: SESSION_COOKIE_NAME,
+  isProduction: IS_PRODUCTION,
+});
 registerAppointmentRoutes(app);
 registerBillingAuditRoutes(app);
 registerDentalAdminRoutes(app);

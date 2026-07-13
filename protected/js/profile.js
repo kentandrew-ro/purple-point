@@ -1,3 +1,53 @@
+"use strict";
+
+const PROFILE_AUTOSAVE_FIELDS = [
+  "first_name",
+  "last_name",
+  "date_of_birth",
+  "gender",
+  "contact_number",
+  "house_no",
+  "street",
+  "barangay",
+  "city",
+  "zip_code",
+  "blood_type",
+];
+
+let profileDraftKey = null;
+
+function readProfileDraft() {
+  if (!profileDraftKey) return {};
+  try {
+    return JSON.parse(localStorage.getItem(profileDraftKey) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function fillProfileFields(form, values) {
+  PROFILE_AUTOSAVE_FIELDS.forEach((name) => {
+    const field = form.elements[name];
+    if (field && values[name] !== null && values[name] !== undefined) {
+      field.value = values[name];
+    }
+  });
+}
+
+function autosaveProfileDraft(form) {
+  if (!profileDraftKey) return;
+  const draft = {};
+  PROFILE_AUTOSAVE_FIELDS.forEach((name) => {
+    draft[name] = form.elements[name]?.value || "";
+  });
+  try {
+    localStorage.setItem(profileDraftKey, JSON.stringify(draft));
+    const resultBox = document.getElementById("add-patient-result");
+    resultBox.textContent = "Changes saved automatically on this device.";
+    resultBox.classList.remove("error", "success");
+  } catch {}
+}
+
 async function submitPatientForm(e) {
   e.preventDefault();
 
@@ -37,9 +87,14 @@ async function submitPatientForm(e) {
       throw new Error(data?.error || "Failed to save profile");
     }
 
+    if (profileDraftKey) localStorage.removeItem(profileDraftKey);
     resultBox.textContent = "Profile saved successfully!";
+    resultBox.classList.add("success");
+    resultBox.classList.remove("error");
   } catch (err) {
     resultBox.textContent = `Error: ${err?.message || "Unknown error"}`;
+    resultBox.classList.add("error");
+    resultBox.classList.remove("success");
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }
@@ -52,19 +107,12 @@ async function prefillForm(form) {
 
     if (data.ok && data.patient) {
       const p = data.patient;
-      form.first_name.value = p.first_name || "";
-      form.last_name.value = p.last_name || "";
-      form.date_of_birth.value = p.date_of_birth
-        ? p.date_of_birth.split("T")[0]
-        : "";
-      form.gender.value = p.gender || "";
-      form.contact_number.value = p.contact_number || "";
-      form.house_no.value = p.house_no || "";
-      form.street.value = p.street || "";
-      form.barangay.value = p.barangay || "";
-      form.city.value = p.city || "";
-      form.zip_code.value = p.zip_code || "";
-      form.blood_type.value = p.blood_type || "";
+      fillProfileFields(form, {
+        ...p,
+        date_of_birth: p.date_of_birth
+          ? String(p.date_of_birth).slice(0, 10)
+          : "",
+      });
     }
   } catch (err) {
     console.log("No existing profile data.");
@@ -74,7 +122,18 @@ async function prefillForm(form) {
 document.addEventListener("DOMContentLoaded", async () => {
   const form = document.getElementById("add-patient-form");
   if (form) {
+    try {
+      const meResponse = await fetch("/api/me");
+      if (meResponse.ok) {
+        const me = await meResponse.json();
+        profileDraftKey = `purplepoint:profile-draft:${me.userId}`;
+      }
+    } catch {}
+
     await prefillForm(form);
+    fillProfileFields(form, readProfileDraft());
     form.addEventListener("submit", submitPatientForm);
+    form.addEventListener("input", () => autosaveProfileDraft(form));
+    form.addEventListener("change", () => autosaveProfileDraft(form));
   }
 });

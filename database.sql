@@ -83,6 +83,7 @@ CREATE TABLE dental_records (
   treatment_plan_notes TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_dental_records_appointment_id (appointment_id),
   FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE,
   FOREIGN KEY (appointment_id) REFERENCES appointments(appointment_id),
   FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id),
