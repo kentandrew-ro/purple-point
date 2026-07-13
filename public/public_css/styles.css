@@ -121,6 +121,14 @@ button.secondary:hover {
   border-color: var(--purple-light);
   background: var(--purple-pale);
 }
+.danger-button,
+button.danger-button {
+  background: var(--danger);
+}
+.danger-button:hover,
+button.danger-button:hover {
+  background: #962f39;
+}
 
 input,
 select,

@@ -8,7 +8,7 @@ const {
   parsePositiveInteger,
   validateGender,
 } = require("../lib/businessRules");
-const { recordAudit } = require("../lib/audit");
+const { createAuditLog, recordAudit } = require("../lib/audit");
 
 function registerDentalAdminRoutes(app) {
   app.get("/api/admin/users/search", async (req, res) => {
@@ -306,6 +306,10 @@ function registerDentalAdminRoutes(app) {
          LEFT JOIN patient_treatments pt ON pt.dental_record_id = dr.dental_record_id
          LEFT JOIN treatment t ON t.treatment_id = pt.treatment_id
          WHERE dr.patient_id = ?
+           AND (
+             pt.patient_treatment_id IS NOT NULL
+             OR NULLIF(TRIM(dr.treatment_plan_notes), '') IS NOT NULL
+           )
          ORDER BY dr.visit_date DESC, dr.dental_record_id DESC`,
         [patientId],
       );
@@ -495,6 +499,150 @@ function registerDentalAdminRoutes(app) {
     } catch (err) {
       console.error(err);
       return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    }
+  });
+
+  app.delete("/api/dental-records/:id/treatment", async (req, res) => {
+    if (!req.session.userId)
+      return res.status(401).json({ error: "Not logged in" });
+    if (req.session.role !== "admin")
+      return res.status(403).json({ error: "Forbidden" });
+
+    const recordId = parseInt(req.params.id, 10);
+    if (!recordId) {
+      return res.status(400).json({ ok: false, error: "Invalid record ID." });
+    }
+
+    let conn;
+    try {
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
+
+      const [rows] = await conn.execute(
+        `SELECT
+           dr.dental_record_id, dr.patient_id, dr.appointment_id,
+           dr.treatment_plan_notes, dr.teeth_involved,
+           pt.patient_treatment_id, pt.treatment_id,
+           pt.actual_price, pt.actual_duration,
+           t.treatment_name, t.description, t.category,
+           b.billing_id
+         FROM dental_records dr
+         LEFT JOIN patient_treatments pt
+           ON pt.dental_record_id = dr.dental_record_id
+         LEFT JOIN treatment t ON t.treatment_id = pt.treatment_id
+         LEFT JOIN billing b
+           ON b.patient_treatment_id = pt.patient_treatment_id
+         WHERE dr.dental_record_id = ?
+         FOR UPDATE`,
+        [recordId],
+      );
+
+      if (!rows.length) {
+        await conn.rollback();
+        return res
+          .status(404)
+          .json({ ok: false, error: "Treatment record not found." });
+      }
+
+      const treatmentLinks = rows.filter(
+        (row) => row.patient_treatment_id !== null,
+      );
+      const hasLegacyTreatment = Boolean(
+        String(rows[0].treatment_plan_notes || "").trim(),
+      );
+      if (!treatmentLinks.length && !hasLegacyTreatment) {
+        await conn.rollback();
+        return res
+          .status(404)
+          .json({ ok: false, error: "No treatment exists on this record." });
+      }
+
+      if (rows.some((row) => row.billing_id !== null)) {
+        await conn.rollback();
+        return res.status(409).json({
+          ok: false,
+          error:
+            "This treatment has a billing statement and cannot be deleted.",
+        });
+      }
+
+      await conn.execute(
+        "DELETE FROM patient_treatments WHERE dental_record_id = ?",
+        [recordId],
+      );
+
+      const treatmentIds = [
+        ...new Set(
+          treatmentLinks
+            .map((row) => row.treatment_id)
+            .filter((treatmentId) => treatmentId !== null),
+        ),
+      ];
+      for (const treatmentId of treatmentIds) {
+        await conn.execute(
+          `DELETE FROM treatment
+           WHERE treatment_id = ?
+             AND NOT EXISTS (
+               SELECT 1 FROM patient_treatments
+               WHERE treatment_id = ?
+             )`,
+          [treatmentId, treatmentId],
+        );
+      }
+
+      // Keep the appointment-linked dental record for vitals and tooth-chart
+      // history. With no patient_treatments link, the appointment becomes
+      // selectable again and a replacement treatment reuses this record.
+      await conn.execute(
+        `UPDATE dental_records
+         SET treatment_plan_notes = NULL, teeth_involved = NULL
+         WHERE dental_record_id = ?`,
+        [recordId],
+      );
+
+      await createAuditLog(conn, req, {
+        action: "DELETE_TREATMENT",
+        entityType: "treatment",
+        entityId: treatmentLinks[0]?.patient_treatment_id || recordId,
+        description: `Deleted treatment from dental record #${recordId}`,
+        oldValues: {
+          dental_record_id: recordId,
+          patient_id: rows[0].patient_id,
+          appointment_id: rows[0].appointment_id,
+          treatments: treatmentLinks.map((row) => ({
+            patient_treatment_id: row.patient_treatment_id,
+            treatment_id: row.treatment_id,
+            treatment_name: row.treatment_name,
+            description: row.description,
+            category: row.category,
+            actual_price: row.actual_price,
+            actual_duration: row.actual_duration,
+          })),
+          treatment_plan_notes: rows[0].treatment_plan_notes,
+          teeth_involved: rows[0].teeth_involved,
+        },
+        newValues: null,
+      });
+
+      await conn.commit();
+      return res.json({ ok: true, message: "Treatment deleted successfully." });
+    } catch (err) {
+      if (conn) {
+        try {
+          await conn.rollback();
+        } catch (_) {}
+      }
+      console.error(err);
+      if (err.code === "ER_ROW_IS_REFERENCED_2") {
+        return res.status(409).json({
+          ok: false,
+          error:
+            "This treatment is referenced by another record and cannot be deleted.",
+        });
+      }
+      return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    } finally {
+      if (conn) conn.release();
     }
   });
 

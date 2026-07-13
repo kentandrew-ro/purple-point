@@ -1341,13 +1341,20 @@ function renderTreatmentsTable(treatments) {
         <td>${escapeHtml(t.teeth)}</td>
         <td>${escapeHtml(t.doctor)}</td>
         <td>${escapeHtml(t.notes)}</td>
-        <td>
+        <td style="display:flex;gap:8px;flex-wrap:wrap;">
           <button
             type="button"
             class="btn-edit-treatment"
             data-treatment-id="${escapeHtml(t.treatment_id)}"
           >
             Edit
+          </button>
+          <button
+            type="button"
+            class="btn-delete-treatment danger-button"
+            data-treatment-id="${escapeHtml(t.treatment_id)}"
+          >
+            Delete
           </button>
         </td>
       </tr>`,
@@ -1596,10 +1603,49 @@ function initDentalRecordsTab() {
   }
 
   if (treatmentsBody) {
-    treatmentsBody.addEventListener("click", (e) => {
-      const btn = e.target.closest(".btn-edit-treatment");
-      if (!btn) return;
-      const treatment = dentalTreatmentsById.get(btn.dataset.treatmentId);
+    treatmentsBody.addEventListener("click", async (e) => {
+      const deleteButton = e.target.closest(".btn-delete-treatment");
+      if (deleteButton) {
+        const treatment = dentalTreatmentsById.get(
+          deleteButton.dataset.treatmentId,
+        );
+        if (!treatment) return;
+
+        const confirmed = window.confirm(
+          `Delete the ${treatment.procedure || "selected"} treatment? This cannot be undone.`,
+        );
+        if (!confirmed) return;
+
+        const originalText = deleteButton.textContent;
+        deleteButton.disabled = true;
+        deleteButton.textContent = "Deleting...";
+
+        try {
+          const res = await fetch(
+            `/api/dental-records/${encodeURIComponent(treatment.treatment_id)}/treatment`,
+            { method: "DELETE" },
+          );
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.ok) {
+            throw new Error(data.error || "Failed to delete treatment");
+          }
+
+          await loadDentalPatientRecord(dentalCurrentPatientId);
+          showDentalSubtab("treatments");
+        } catch (err) {
+          console.error(err);
+          alert(err.message || "Failed to delete treatment.");
+          deleteButton.disabled = false;
+          deleteButton.textContent = originalText;
+        }
+        return;
+      }
+
+      const editButton = e.target.closest(".btn-edit-treatment");
+      if (!editButton) return;
+      const treatment = dentalTreatmentsById.get(
+        editButton.dataset.treatmentId,
+      );
       if (!treatment) return;
       enterEditTreatmentMode(treatment);
     });
