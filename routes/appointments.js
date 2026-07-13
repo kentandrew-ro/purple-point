@@ -370,25 +370,10 @@ function registerAppointmentRoutes(app) {
          WHERE appointment_status = 'scheduled'`,
       );
 
-      const [[{ outstanding_balance }]] = await pool.execute(
-        `SELECT COALESCE(
-           SUM(GREATEST(b.total_amount - COALESCE(payment_totals.amount_paid, 0), 0)),
-           0
-         ) AS outstanding_balance
-         FROM billing b
-         LEFT JOIN (
-           SELECT billing_id, SUM(amount_paid) AS amount_paid
-           FROM payments
-           WHERE payment_status = 'completed'
-           GROUP BY billing_id
-         ) payment_totals ON payment_totals.billing_id = b.billing_id`,
-      );
-
       return res.json({
         total_patients,
         appointments_today,
         pending_review,
-        outstanding_balance,
       });
     } catch (err) {
       console.error(err);

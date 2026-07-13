@@ -30,18 +30,12 @@ async function loadStats() {
       data.appointments_today ?? "--";
     document.getElementById("stat-pending-review").textContent =
       data.pending_review ?? "--";
-    document.getElementById("stat-outstanding-balances").textContent =
-      new Intl.NumberFormat("en-PH", {
-        style: "currency",
-        currency: "PHP",
-      }).format(Number(data.outstanding_balance) || 0);
   } catch (err) {
     console.error(err);
     [
       "stat-total-patients",
       "stat-appointments-today",
       "stat-pending-review",
-      "stat-outstanding-balances",
     ].forEach((id) => {
       document.getElementById(id).textContent = "!";
     });
@@ -1718,9 +1712,7 @@ function initDentalRecordsTab() {
   const btnRecordVitals = document.getElementById("btn-record-vitals");
   const recordVitalsCard = document.getElementById("record-vitals-card");
   const recordVitalsForm = document.getElementById("record-vitals-form");
-  const vitalsAppointmentSelect = document.getElementById(
-    "vitals_appointment",
-  );
+  const vitalsAppointmentSelect = document.getElementById("vitals_appointment");
   const btnCancelRecordVitals = document.getElementById(
     "btn-cancel-record-vitals",
   );
