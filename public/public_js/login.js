@@ -12,6 +12,9 @@ const PROFILE_DRAFT_FIELDS = [
   "city",
   "zip_code",
   "blood_type",
+  "emergency_contact_name",
+  "emergency_contact_number",
+  "patient_status",
 ];
 
 let loginProfileDraftKey = null;
@@ -95,6 +98,7 @@ async function showProfileCompletion() {
     date_of_birth: patient.date_of_birth
       ? String(patient.date_of_birth).slice(0, 10)
       : "",
+    patient_status: patient.patient_status || "active",
   });
   fillProfileForm(profileForm, readDraft(loginProfileDraftKey));
   setFormMessage(

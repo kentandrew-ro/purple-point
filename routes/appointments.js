@@ -5,6 +5,7 @@ const { INTERNAL_ERROR_MESSAGE, requireField } = require("../lib/http");
 const {
   APPOINTMENT_STATUSES,
   APPOINTMENT_TYPES,
+  isIsoDate,
   parsePositiveInteger,
 } = require("../lib/businessRules");
 const { recordAudit } = require("../lib/audit");
@@ -73,6 +74,7 @@ function registerAppointmentRoutes(app) {
     try {
       const body = req.body || {};
       let patient_id;
+      let patientProfile;
 
       if (req.session.role === "admin") {
         patient_id = parseInt(body.patient_id, 10);
@@ -82,7 +84,12 @@ function registerAppointmentRoutes(app) {
             .json({ ok: false, error: "Missing field(s): patient_id" });
         }
         const [patients] = await pool.execute(
-          "SELECT patient_id FROM patients WHERE patient_id = ?",
+          `SELECT p.patient_id, pr.patient_records_id,
+                  pr.emergency_contact_name, pr.emergency_contact_number,
+                  pr.patient_status
+           FROM patients p
+           LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
+           WHERE p.patient_id = ?`,
           [patient_id],
         );
         if (!patients.length) {
@@ -90,9 +97,15 @@ function registerAppointmentRoutes(app) {
             .status(404)
             .json({ ok: false, error: "Patient not found." });
         }
+        patientProfile = patients[0];
       } else {
         const [rows] = await pool.execute(
-          "SELECT patient_id FROM patients WHERE user_id = ?",
+          `SELECT p.patient_id, pr.patient_records_id,
+                  pr.emergency_contact_name, pr.emergency_contact_number,
+                  pr.patient_status
+           FROM patients p
+           LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
+           WHERE p.user_id = ?`,
           [req.session.userId],
         );
         if (!rows.length) {
@@ -103,6 +116,26 @@ function registerAppointmentRoutes(app) {
           });
         }
         patient_id = rows[0].patient_id;
+        patientProfile = rows[0];
+      }
+
+      if (
+        !patientProfile.patient_records_id ||
+        !patientProfile.emergency_contact_name ||
+        !patientProfile.emergency_contact_number
+      ) {
+        return res.status(409).json({
+          ok: false,
+          error:
+            "Patient must complete the profile before making appointments.",
+        });
+      }
+
+      if (patientProfile.patient_status !== "active") {
+        return res.status(409).json({
+          ok: false,
+          error: "Appointments can only be created for active patients.",
+        });
       }
 
       const appointment_date = requireField(body, "appointment_date");
@@ -133,6 +166,14 @@ function registerAppointmentRoutes(app) {
           .json({ ok: false, error: "Invalid dentist_id." });
       }
 
+      const timePattern = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+      if (!isIsoDate(appointment_date) || !timePattern.test(appointment_time)) {
+        return res.status(400).json({
+          ok: false,
+          error: "Invalid appointment date or time.",
+        });
+      }
+
       const [dentists] = await pool.execute(
         "SELECT dentist_id FROM dentist WHERE dentist_id = ?",
         [dentist_id],
@@ -151,6 +192,42 @@ function registerAppointmentRoutes(app) {
         return res
           .status(400)
           .json({ ok: false, error: "Invalid appointment status." });
+      }
+
+      const [availableSchedules] = await pool.execute(
+        `SELECT schedule_id
+         FROM dentist_schedule
+         WHERE dentist_id = ?
+           AND is_active = TRUE
+           AND day_of_week = DAYNAME(?)
+           AND TIME(?) >= start_time
+           AND TIME(?) < end_time
+         LIMIT 1`,
+        [dentist_id, appointment_date, appointment_time, appointment_time],
+      );
+      if (!availableSchedules.length) {
+        return res.status(409).json({
+          ok: false,
+          error: "The selected dentist is not scheduled at that date and time.",
+        });
+      }
+
+      const [conflicts] = await pool.execute(
+        `SELECT appointment_id
+         FROM appointments
+         WHERE dentist_id = ?
+           AND appointment_date = ?
+           AND appointment_time = ?
+           AND appointment_status <> 'cancelled'
+         LIMIT 1`,
+        [dentist_id, appointment_date, appointment_time],
+      );
+      if (conflicts.length) {
+        return res.status(409).json({
+          ok: false,
+          error:
+            "The selected dentist already has an appointment at that time.",
+        });
       }
 
       const [result] = await pool.execute(

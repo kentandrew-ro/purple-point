@@ -509,6 +509,10 @@ function renderPatientInfoDetails(patient) {
       <p><strong>Gender:</strong> ${escapeHtml(patient.gender || "Not provided")}</p>
       <p><strong>Blood type:</strong> ${escapeHtml(patient.blood_type || "Not provided")}</p>
       <p><strong>Address:</strong> ${escapeHtml(address || "Not provided")}</p>
+      <p><strong>Emergency contact:</strong> ${escapeHtml(patient.emergency_contact_name || "Not provided")}</p>
+      <p><strong>Emergency contact number:</strong> ${escapeHtml(patient.emergency_contact_number || "Not provided")}</p>
+      <p><strong>Patient status:</strong> ${escapeHtml(patient.patient_status || "active")}</p>
+      <p><strong>Date registered:</strong> ${escapeHtml(patient.date_registered || "Not provided")}</p>
       <p><strong>Appointments:</strong> ${escapeHtml(String(patient.appointment_count || 0))}</p>
     </div>
   `;

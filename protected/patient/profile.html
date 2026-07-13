@@ -140,6 +140,40 @@
                 />
               </div>
             </div>
+            <h3 style="margin: 12px 0 0">Emergency Contact</h3>
+            <div class="form-grid">
+              <div class="field-group">
+                <label for="profile-emergency-name">Contact name</label>
+                <input
+                  id="profile-emergency-name"
+                  name="emergency_contact_name"
+                  placeholder="Emergency contact name"
+                  required
+                />
+              </div>
+              <div class="field-group">
+                <label for="profile-emergency-number">Contact number</label>
+                <input
+                  id="profile-emergency-number"
+                  name="emergency_contact_number"
+                  type="tel"
+                  placeholder="Emergency contact number"
+                  required
+                />
+              </div>
+              <div class="field-group">
+                <label for="profile-patient-status">Patient status</label>
+                <select
+                  id="profile-patient-status"
+                  name="patient_status"
+                  required
+                >
+                  <option value="active" selected>Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+            </div>
             <div class="actions">
               <button type="submit">Save Patient Profile</button
               ><button type="button" class="secondary" onclick="history.back()">

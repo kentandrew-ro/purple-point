@@ -75,7 +75,13 @@ function registerAuthProfileRoutes(
         let profileComplete = true;
         if (user.role === "patient") {
           const [profiles] = await pool.execute(
-            "SELECT patient_id FROM patients WHERE user_id = ? LIMIT 1",
+            `SELECT p.patient_id
+             FROM patients p
+             JOIN patient_records pr ON pr.patient_id = p.patient_id
+             WHERE p.user_id = ?
+               AND TRIM(pr.emergency_contact_name) <> ''
+               AND TRIM(pr.emergency_contact_number) <> ''
+             LIMIT 1`,
             [user.user_id],
           );
           profileComplete = profiles.length > 0;
@@ -151,9 +157,14 @@ function registerAuthProfileRoutes(
 
     try {
       const [rows] = await pool.execute(
-        `SELECT p.*, u.first_name, u.last_name, u.contact_number, u.email
+        `SELECT p.*, u.first_name, u.last_name, u.contact_number, u.email,
+                pr.patient_records_id, pr.emergency_contact_name,
+                pr.emergency_contact_number,
+                COALESCE(pr.patient_status, 'active') AS patient_status,
+                DATE_FORMAT(pr.date_registered, '%Y-%m-%d') AS date_registered
          FROM users u
          LEFT JOIN patients p ON p.user_id = u.user_id
+         LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
          WHERE u.user_id = ?`,
         [req.session.userId],
       );
@@ -164,7 +175,12 @@ function registerAuthProfileRoutes(
 
       return res.json({
         ok: true,
-        profileComplete: Boolean(rows[0].patient_id),
+        profileComplete: Boolean(
+          rows[0].patient_id &&
+          rows[0].patient_records_id &&
+          rows[0].emergency_contact_name &&
+          rows[0].emergency_contact_number,
+        ),
         patient: rows[0],
       });
     } catch (err) {
@@ -197,6 +213,15 @@ function registerAuthProfileRoutes(
       const city = requireField(body, "city");
       const zip_code = requireField(body, "zip_code");
       const blood_type = requireField(body, "blood_type");
+      const emergency_contact_name = requireField(
+        body,
+        "emergency_contact_name",
+      );
+      const emergency_contact_number = requireField(
+        body,
+        "emergency_contact_number",
+      );
+      const patient_status = requireField(body, "patient_status") || "active";
 
       const missing = [];
       if (!first_name) missing.push("first_name");
@@ -210,6 +235,8 @@ function registerAuthProfileRoutes(
       if (!city) missing.push("city");
       if (!zip_code) missing.push("zip_code");
       if (!blood_type) missing.push("blood_type");
+      if (!emergency_contact_name) missing.push("emergency_contact_name");
+      if (!emergency_contact_number) missing.push("emergency_contact_number");
 
       if (missing.length) {
         return res.status(400).json({
@@ -221,6 +248,15 @@ function registerAuthProfileRoutes(
       const normalizedGender = gender.toLowerCase();
       if (!["male", "female"].includes(normalizedGender)) {
         return res.status(400).json({ ok: false, error: "Invalid gender." });
+      }
+
+      const normalizedPatientStatus = patient_status.toLowerCase();
+      if (
+        !["active", "inactive", "archived"].includes(normalizedPatientStatus)
+      ) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Invalid patient_status." });
       }
 
       await conn.beginTransaction();
@@ -276,6 +312,22 @@ function registerAuthProfileRoutes(
         patientId = patientResult.insertId;
       }
 
+      await conn.execute(
+        `INSERT INTO patient_records
+           (patient_id, emergency_contact_name, emergency_contact_number, patient_status)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           emergency_contact_name = VALUES(emergency_contact_name),
+           emergency_contact_number = VALUES(emergency_contact_number),
+           patient_status = VALUES(patient_status)`,
+        [
+          patientId,
+          emergency_contact_name,
+          emergency_contact_number,
+          normalizedPatientStatus,
+        ],
+      );
+
       await createAuditLog(conn, req, {
         action: "UPDATE_PATIENT",
         entityType: "patient",
@@ -290,6 +342,9 @@ function registerAuthProfileRoutes(
           city,
           zip_code,
           blood_type,
+          emergency_contact_name,
+          emergency_contact_number,
+          patient_status: normalizedPatientStatus,
         },
       });
       await conn.commit();
@@ -672,6 +727,25 @@ function registerAuthProfileRoutes(
       );
       if (!dentists.length) {
         return res.status(404).json({ ok: false, error: "Dentist not found." });
+      }
+
+      const [overlapping] = await pool.execute(
+        `SELECT schedule_id
+         FROM dentist_schedule
+         WHERE dentist_id = ?
+           AND day_of_week = ?
+           AND is_active = TRUE
+           AND start_time < TIME(?)
+           AND end_time > TIME(?)
+         LIMIT 1`,
+        [dentist_id, day_of_week, end_time, start_time],
+      );
+      if (overlapping.length) {
+        return res.status(409).json({
+          ok: false,
+          error:
+            "This clinic-hours entry overlaps an existing active schedule.",
+        });
       }
 
       const [result] = await pool.execute(

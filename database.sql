@@ -54,6 +54,8 @@ CREATE TABLE dentist_schedule (
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,
   is_active BOOLEAN DEFAULT TRUE,
+  KEY idx_dentist_schedule_availability
+    (dentist_id, day_of_week, is_active, start_time, end_time),
   FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id)
 );
 
@@ -68,6 +70,8 @@ CREATE TABLE appointments (
   reason_for_visit TEXT,
   cancel_reason TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_appointments_dentist_slot
+    (dentist_id, appointment_date, appointment_time, appointment_status),
   FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
   FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id)
 );

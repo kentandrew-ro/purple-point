@@ -342,8 +342,15 @@ async function loadAppointments() {
   return response.json();
 }
 
-async function loadDentists() {
-  const response = await fetch("/api/dentists");
+async function loadDentists(dateTimeValue) {
+  const dateParts = parseAppointmentDateTime(dateTimeValue);
+  if (!dateParts) return [];
+
+  const params = new URLSearchParams({
+    appointment_date: dateParts.appointment_date,
+    appointment_time: dateParts.appointment_time,
+  });
+  const response = await fetch(`/api/dentists?${params.toString()}`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || "Failed to load dentists");
@@ -352,26 +359,45 @@ async function loadDentists() {
 }
 
 async function populateDentistDropdown() {
+  const form = document.getElementById("add-appointment-form");
+  const select = form?.elements?.dentist_id;
+  const dateTimeValue = form?.elements?.appointment_date?.value || "";
+  if (!select) return;
+
+  if (!dateTimeValue) {
+    select.innerHTML = '<option value="">Choose a date and time first</option>';
+    select.disabled = true;
+    return;
+  }
+
+  const currentValue = select.value || readAppointmentDraft().dentist_id || "";
+  select.disabled = true;
+  select.innerHTML = '<option value="">Loading available doctors...</option>';
+
   try {
-    const dentists = await loadDentists();
-    const select = document.querySelector("select[name='dentist_id']");
-    if (select) {
-      const currentValue = select.value;
-      select.innerHTML = '<option value="">Select Doctor</option>';
-      dentists.forEach((dentist) => {
-        const option = document.createElement("option");
-        option.value = dentist.dentist_id;
-        const name = `${dentist.first_name} ${dentist.last_name}`;
-        const specialty = dentist.specialization
-          ? ` (${dentist.specialization})`
-          : "";
-        option.textContent = `${name}${specialty}`;
-        select.appendChild(option);
-      });
+    const dentists = await loadDentists(dateTimeValue);
+    if (form.elements.appointment_date.value !== dateTimeValue) return;
+    select.innerHTML = dentists.length
+      ? '<option value="">Select an available doctor</option>'
+      : '<option value="">No doctors available at this time</option>';
+    dentists.forEach((dentist) => {
+      const option = document.createElement("option");
+      option.value = dentist.dentist_id;
+      const name = `${dentist.first_name} ${dentist.last_name}`;
+      const specialty = dentist.specialization
+        ? ` (${dentist.specialization})`
+        : "";
+      option.textContent = `${name}${specialty}`;
+      select.appendChild(option);
+    });
+    select.disabled = dentists.length === 0;
+    if (dentists.some((dentist) => String(dentist.dentist_id) === currentValue)) {
       select.value = currentValue;
     }
   } catch (err) {
     console.error("Failed to load dentists:", err);
+    select.innerHTML = '<option value="">Unable to load available doctors</option>';
+    select.disabled = true;
   }
 }
 
@@ -446,6 +472,7 @@ async function handleAddSubmit(event) {
       .addEventListener("click", () => showView("view-choose"));
     if (appointmentDraftKey) localStorage.removeItem(appointmentDraftKey);
     form.reset();
+    populateDentistDropdown();
   } catch (err) {
     resultBox.innerHTML = `<h2>Error</h2><p>${escapeHtml(err?.message || "Unknown error")}</p>`;
   } finally {
@@ -545,16 +572,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  await populateDentistDropdown();
-
   const addForm = document.getElementById("add-appointment-form");
   if (addForm) {
     restoreAppointmentDraft(addForm);
+    await populateDentistDropdown();
     addForm.addEventListener("submit", handleAddSubmit);
-    addForm.addEventListener("input", () => autosaveAppointmentDraft(addForm));
-    addForm.addEventListener("change", () =>
-      autosaveAppointmentDraft(addForm),
-    );
+    addForm.addEventListener("input", (event) => {
+      autosaveAppointmentDraft(addForm);
+    });
+    addForm.addEventListener("change", (event) => {
+      autosaveAppointmentDraft(addForm);
+      if (event.target?.name === "appointment_date") {
+        populateDentistDropdown();
+      }
+    });
   }
 
   document.getElementById("btn-add")?.addEventListener("click", () => {

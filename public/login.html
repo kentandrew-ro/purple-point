@@ -179,6 +179,42 @@
                 />
               </div>
             </div>
+            <h2 class="form-section-title">Emergency Contact</h2>
+            <div class="form-grid">
+              <div class="field-group">
+                <label for="login-profile-emergency-name">Contact name</label>
+                <input
+                  id="login-profile-emergency-name"
+                  name="emergency_contact_name"
+                  autocomplete="off"
+                  required
+                />
+              </div>
+              <div class="field-group">
+                <label for="login-profile-emergency-number"
+                  >Contact number</label
+                >
+                <input
+                  id="login-profile-emergency-number"
+                  name="emergency_contact_number"
+                  type="tel"
+                  autocomplete="off"
+                  required
+                />
+              </div>
+              <div class="field-group">
+                <label for="login-profile-patient-status">Patient status</label>
+                <select
+                  id="login-profile-patient-status"
+                  name="patient_status"
+                  required
+                >
+                  <option value="active" selected>Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+            </div>
             <div
               id="login-profile-message"
               class="form-message"

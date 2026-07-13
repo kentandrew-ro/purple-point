@@ -108,9 +108,13 @@ function registerDentalAdminRoutes(app) {
            p.patient_id, p.user_id, u.first_name, u.last_name,
            p.date_of_birth, p.gender, u.contact_number,
            p.house_no, p.street, p.barangay, p.city, p.zip_code,
-           p.blood_type, p.created_at, u.email
+           p.blood_type, p.created_at, u.email,
+           DATE_FORMAT(pr.date_registered, '%Y-%m-%d') AS date_registered,
+           pr.emergency_contact_name, pr.emergency_contact_number,
+           COALESCE(pr.patient_status, 'active') AS patient_status
          FROM patients p
          LEFT JOIN users u ON u.user_id = p.user_id
+         LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
          WHERE p.patient_id = ?`,
         [patientId],
       );
@@ -142,6 +146,58 @@ function registerDentalAdminRoutes(app) {
       return res.status(401).json({ error: "Not logged in" });
 
     try {
+      const appointmentDate = requireField(req.query, "appointment_date");
+      const appointmentTime = requireField(req.query, "appointment_time");
+
+      if (
+        (appointmentDate && !appointmentTime) ||
+        (!appointmentDate && appointmentTime)
+      ) {
+        return res.status(400).json({
+          error:
+            "appointment_date and appointment_time must be provided together.",
+        });
+      }
+
+      if (appointmentDate || appointmentTime) {
+        const timePattern = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+        if (!isIsoDate(appointmentDate) || !timePattern.test(appointmentTime)) {
+          return res
+            .status(400)
+            .json({ error: "Invalid appointment date or time." });
+        }
+
+        const [availableRows] = await pool.execute(
+          `SELECT DISTINCT d.dentist_id, u.first_name, u.last_name,
+                  d.specialization, d.license_number,
+                  DATE_FORMAT(d.hire_date, '%Y-%m-%d') AS hire_date
+           FROM dentist d
+           JOIN users u ON u.user_id = d.user_id
+           JOIN dentist_schedule ds ON ds.dentist_id = d.dentist_id
+           WHERE ds.is_active = TRUE
+             AND ds.day_of_week = DAYNAME(?)
+             AND TIME(?) >= ds.start_time
+             AND TIME(?) < ds.end_time
+             AND NOT EXISTS (
+               SELECT 1
+               FROM appointments a
+               WHERE a.dentist_id = d.dentist_id
+                 AND a.appointment_date = ?
+                 AND a.appointment_time = ?
+                 AND a.appointment_status <> 'cancelled'
+             )
+           ORDER BY u.first_name, u.last_name`,
+          [
+            appointmentDate,
+            appointmentTime,
+            appointmentTime,
+            appointmentDate,
+            appointmentTime,
+          ],
+        );
+        return res.json(availableRows);
+      }
+
       const [rows] = await pool.execute(
         `SELECT d.dentist_id, u.first_name, u.last_name, d.specialization,
                 d.license_number, DATE_FORMAT(d.hire_date, '%Y-%m-%d') AS hire_date

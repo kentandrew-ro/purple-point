@@ -12,6 +12,9 @@ const PROFILE_AUTOSAVE_FIELDS = [
   "city",
   "zip_code",
   "blood_type",
+  "emergency_contact_name",
+  "emergency_contact_number",
+  "patient_status",
 ];
 
 let profileDraftKey = null;
@@ -67,6 +70,9 @@ async function submitPatientForm(e) {
     city: form.city.value || "",
     zip_code: form.zip_code.value || "",
     blood_type: form.blood_type.value || "",
+    emergency_contact_name: form.emergency_contact_name.value || "",
+    emergency_contact_number: form.emergency_contact_number.value || "",
+    patient_status: form.patient_status.value || "active",
   };
 
   const submitBtn = form.querySelector('button[type="submit"]');
@@ -112,6 +118,7 @@ async function prefillForm(form) {
         date_of_birth: p.date_of_birth
           ? String(p.date_of_birth).slice(0, 10)
           : "",
+        patient_status: p.patient_status || "active",
       });
     }
   } catch (err) {
