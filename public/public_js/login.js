@@ -262,3 +262,16 @@ document
 document.getElementById("signupButton").addEventListener("click", () => {
   window.location.href = "/signup.html";
 });
+
+const forgotPasswordDialog = document.getElementById(
+  "forgot-password-dialog",
+);
+document
+  .getElementById("forgot-password-button")
+  .addEventListener("click", () => forgotPasswordDialog.showModal());
+document
+  .getElementById("forgot-password-close-button")
+  .addEventListener("click", () => forgotPasswordDialog.close());
+forgotPasswordDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+});

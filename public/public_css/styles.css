@@ -248,6 +248,39 @@ label {
 .auth-card.profile-completion {
   width: min(100%, 760px);
 }
+.forgot-password-action {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+.forgot-password-button,
+button.forgot-password-button {
+  min-height: auto;
+  padding: 4px 8px;
+  border: 0;
+  color: var(--purple);
+  background: transparent;
+  box-shadow: none;
+}
+.forgot-password-button:hover,
+button.forgot-password-button:hover {
+  color: var(--purple-mid);
+  background: transparent;
+  box-shadow: none;
+  text-decoration: underline;
+  transform: none;
+}
+.forgot-password-dialog {
+  width: min(92vw, 560px);
+}
+.forgot-password-dialog li {
+  margin-bottom: 8px;
+}
+.forgot-password-close-action {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
 .auth-card > p {
   margin: -10px 0 25px;
 }

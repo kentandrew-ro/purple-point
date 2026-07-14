@@ -61,6 +61,15 @@
                 Create Account
               </button>
             </div>
+            <div class="forgot-password-action">
+              <button
+                type="button"
+                id="forgot-password-button"
+                class="forgot-password-button"
+              >
+                Forgot password?
+              </button>
+            </div>
           </form>
         </section>
 
@@ -229,6 +238,46 @@
         </section>
       </div>
     </main>
+
+    <dialog
+      id="forgot-password-dialog"
+      class="forgot-password-dialog"
+      aria-labelledby="forgot-password-title"
+    >
+      <h2 id="forgot-password-title">Forgot Your Password?</h2>
+      <p>
+        For your account's security, passwords cannot currently be reset
+        automatically.
+      </p>
+      <p>To request a password change:</p>
+      <ol>
+        <li>Contact the clinic directly or visit the clinic reception.</li>
+        <li>
+          Provide your full name, registered email address, and contact number.
+        </li>
+        <li>
+          Clinic staff will verify your identity and forward the request to the
+          authorized administrator.
+        </li>
+        <li>
+          Once approved, you will receive a temporary password or be assisted
+          in creating a new password.
+        </li>
+        <li>
+          Sign in using the temporary password and change it immediately.
+        </li>
+      </ol>
+      <p>Your new password must contain:</p>
+      <ul>
+        <li>At least 8 characters</li>
+        <li>At least one uppercase letter</li>
+        <li>At least one special character</li>
+      </ul>
+      <p>Never share your password or temporary password with anyone.</p>
+      <div class="forgot-password-close-action">
+        <button type="button" id="forgot-password-close-button">Close</button>
+      </div>
+    </dialog>
 
     <script src="/public_js/requiredFields.js"></script>
     <script src="public_js/login.js"></script>
