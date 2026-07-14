@@ -766,43 +766,6 @@ body.admin-layout {
 .tooth-chart-record-summary:empty {
   display: none;
 }
-.treatment-tooth-picker-field {
-  flex-basis: 100% !important;
-  grid-column: 1 / -1;
-}
-.treatment-tooth-picker-label {
-  color: #574f6b;
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-.treatment-tooth-picker {
-  display: grid;
-  grid-template-columns: repeat(16, minmax(32px, 1fr));
-  gap: 5px;
-  margin-top: 5px;
-  overflow-x: auto;
-}
-.treatment-tooth-option {
-  min-width: 32px;
-  min-height: 34px;
-  padding: 4px;
-  border-color: var(--line);
-  color: var(--ink);
-  background: #fff;
-  font-size: 0.75rem;
-}
-.treatment-tooth-option:hover,
-.treatment-tooth-option[aria-pressed="true"] {
-  color: #fff;
-  border-color: var(--purple);
-  background: var(--purple);
-}
-.treatment-tooth-picker-divider {
-  grid-column: 1 / -1;
-  height: 1px;
-  margin: 2px 0;
-  background: var(--line);
-}
 .audit-page > h2 {
   margin-bottom: 12px;
 }

@@ -545,6 +545,10 @@
                     <select id="treatment_appointment">
                       <option value="">— No appointment —</option>
                     </select>
+                    <small>
+                      Tooth(s) are taken automatically from the linked
+                      appointment's Tooth Chart.
+                    </small>
                   </div>
                   <div class="field">
                     <label for="treatment_date">Date</label>
@@ -558,25 +562,6 @@
                       placeholder="e.g. Dental Cleaning"
                       required
                     />
-                  </div>
-                  <div class="field">
-                    <label for="treatment_teeth">Tooth(s)</label>
-                    <input
-                      id="treatment_teeth"
-                      type="text"
-                      placeholder="Select teeth from the chart below"
-                      readonly
-                    />
-                  </div>
-                  <div class="field treatment-tooth-picker-field">
-                    <span class="treatment-tooth-picker-label">
-                      Select Tooth(s)
-                    </span>
-                    <div id="treatment-tooth-selector"></div>
-                    <small>
-                      Click one or more teeth. The Tooth(s) field is filled
-                      automatically.
-                    </small>
                   </div>
                   <div class="field" style="position: relative">
                     <label for="treatment-dentist-search">Doctor</label>

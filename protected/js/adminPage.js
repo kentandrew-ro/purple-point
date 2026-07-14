@@ -1493,7 +1493,6 @@ let dentalTreatmentsById = new Map();
 let dentalToothChartsById = new Map();
 let dentalCurrentToothRecordId = null;
 let dentalEditingTreatmentId = null;
-let dentalSelectedTreatmentTeeth = new Set();
 
 function clearDentalPatientSuggestions() {
   const list = document.getElementById("dental-patient-suggestions");
@@ -1531,55 +1530,6 @@ async function searchDentalPatients(query) {
     console.error(err);
     renderDentalPatientSuggestions([]);
   }
-}
-
-function normalizeToothNumbers(value) {
-  const matches = String(value || "").match(/\d+/g) || [];
-  return [
-    ...new Set(
-      matches
-        .map(Number)
-        .filter((toothNumber) => toothNumber >= 1 && toothNumber <= 32),
-    ),
-  ].sort((first, second) => first - second);
-}
-
-function updateTreatmentTeethInput() {
-  const input = document.getElementById("treatment_teeth");
-  if (!input) return;
-  const selected = [...dentalSelectedTreatmentTeeth].sort(
-    (first, second) => first - second,
-  );
-  input.value = selected.map((toothNumber) => `#${toothNumber}`).join(", ");
-}
-
-function renderTreatmentToothSelector(selectedTeeth = []) {
-  const container = document.getElementById("treatment-tooth-selector");
-  if (!container) return;
-  dentalSelectedTreatmentTeeth = new Set(
-    selectedTeeth.map(Number).filter((toothNumber) => toothNumber >= 1 && toothNumber <= 32),
-  );
-
-  const buttons = [];
-  for (let toothNumber = 1; toothNumber <= 32; toothNumber += 1) {
-    if (toothNumber === 17) {
-      buttons.push('<span class="treatment-tooth-picker-divider"></span>');
-    }
-    const selected = dentalSelectedTreatmentTeeth.has(toothNumber);
-    buttons.push(`
-      <button
-        type="button"
-        class="treatment-tooth-option"
-        data-tooth-number="${toothNumber}"
-        aria-pressed="${selected}"
-        title="${selected ? "Remove" : "Add"} tooth #${toothNumber}"
-      >
-        ${toothNumber}
-      </button>`);
-  }
-  container.className = "treatment-tooth-picker";
-  container.innerHTML = buttons.join("");
-  updateTreatmentTeethInput();
 }
 
 function toothBox(num, status, recordId) {
@@ -1636,8 +1586,9 @@ function renderToothChart(container, toothChart, recordId) {
 }
 
 async function handleToothClick(box) {
-  const recordId = Number(box.dataset.recordId);
-  if (!recordId) return;
+  const recordKey = String(box.dataset.recordId || "");
+  const chartRecord = dentalToothChartsById.get(recordKey);
+  if (!chartRecord) return;
 
   const toothNum = box.dataset.tooth;
   const current = box.dataset.status || "healthy";
@@ -1657,7 +1608,9 @@ async function handleToothClick(box) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        dental_record_id: recordId,
+        dental_record_id: Number(chartRecord.dental_record_id) || null,
+        appointment_id: chartRecord.appointment_id || null,
+        patient_id: dentalCurrentPatientId,
         tooth_number: toothNum,
         condition_status: next,
       }),
@@ -1666,8 +1619,27 @@ async function handleToothClick(box) {
     if (!res.ok || !data.ok) {
       throw new Error(data.error || "Failed to update tooth status");
     }
-    const chartRecord = dentalToothChartsById.get(String(recordId));
-    if (chartRecord) chartRecord.tooth_chart[toothNum] = next;
+    const savedRecordKey = String(data.dental_record_id);
+    if (savedRecordKey !== recordKey) {
+      dentalToothChartsById.delete(recordKey);
+      chartRecord.dental_record_id = data.dental_record_id;
+      dentalToothChartsById.set(savedRecordKey, chartRecord);
+      const select = document.getElementById("tooth-chart-record-select");
+      const option = select
+        ? [...select.options].find((item) => item.value === recordKey)
+        : null;
+      if (option) option.value = savedRecordKey;
+      if (select) select.value = savedRecordKey;
+    }
+    chartRecord.tooth_chart[toothNum] = next;
+    chartRecord.teeth = data.teeth_involved || "None";
+    showToothChartRecord(savedRecordKey);
+
+    const treatment = dentalTreatmentsById.get(savedRecordKey);
+    if (treatment) {
+      treatment.teeth = data.teeth_involved || "None";
+      renderTreatmentsTable([...dentalTreatmentsById.values()]);
+    }
   } catch (err) {
     console.error(err);
     const revertStyle = TOOTH_STATUS_STYLES[current];
@@ -1697,7 +1669,7 @@ function renderToothChartLegend(container) {
 function showToothChartRecord(recordId) {
   const record = dentalToothChartsById.get(String(recordId));
   const summary = document.getElementById("tooth-chart-record-summary");
-  dentalCurrentToothRecordId = record ? Number(record.dental_record_id) : null;
+  dentalCurrentToothRecordId = record ? String(recordId) : null;
 
   if (!record) {
     if (summary) summary.textContent = "";
@@ -1756,6 +1728,31 @@ function renderToothChartRecords(records, preferredRecordId = null) {
   showToothChartRecord(select.value);
 }
 
+function includeAppointmentToothCharts(appointments) {
+  const records = [...dentalToothChartsById.values()];
+  const includedAppointments = new Set(
+    records
+      .map((record) => String(record.appointment_id || ""))
+      .filter(Boolean),
+  );
+
+  (appointments || []).forEach((appointment) => {
+    const appointmentId = String(appointment.appointment_id);
+    if (includedAppointments.has(appointmentId)) return;
+    records.push({
+      dental_record_id: `appointment-${appointmentId}`,
+      appointment_id: appointment.appointment_id,
+      date: appointment.appointment_date,
+      procedure: appointment.appointment_type,
+      teeth: "None",
+      doctor: appointment.doctor_name || "Unassigned",
+      tooth_chart: {},
+    });
+  });
+
+  renderToothChartRecords(records, dentalCurrentToothRecordId);
+}
+
 function toDateInputValue(dateStr) {
   if (!dateStr) return "";
   const s = String(dateStr);
@@ -1780,6 +1777,7 @@ function renderTreatmentsTable(treatments) {
   const tbody = document.getElementById("treatments-body");
   if (!tbody) return;
   if (!treatments || !treatments.length) {
+    dentalTreatmentsById = new Map();
     tbody.innerHTML = "<tr><td colspan='8'>No treatments recorded.</td></tr>";
     return;
   }
@@ -1918,6 +1916,8 @@ async function loadPatientAppointmentsForTreatmentForm(patientId) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) return;
 
+    includeAppointmentToothCharts(data.appointments || []);
+
     (data.appointments || []).forEach((a) => {
       if (a.has_treatment) return;
       const opt = document.createElement("option");
@@ -1975,7 +1975,6 @@ function resetTreatmentFormToAddMode() {
   if (title) title.textContent = "Add Treatment";
   const submitBtn = document.getElementById("treatment-form-submit-btn");
   if (submitBtn) submitBtn.textContent = "Save Treatment";
-  renderTreatmentToothSelector([]);
 }
 
 function initDentalRecordsTab() {
@@ -2021,9 +2020,6 @@ function initDentalRecordsTab() {
   const treatmentDentistSuggestions = document.getElementById(
     "treatment-dentist-suggestions",
   );
-  const treatmentToothSelector = document.getElementById(
-    "treatment-tooth-selector",
-  );
   const toothChartRecordSelect = document.getElementById(
     "tooth-chart-record-select",
   );
@@ -2039,7 +2035,6 @@ function initDentalRecordsTab() {
     );
     document.getElementById("treatment_procedure").value =
       treatment.procedure || "";
-    renderTreatmentToothSelector(normalizeToothNumbers(treatment.teeth));
     document.getElementById("treatment_notes").value = treatment.notes || "";
     document.getElementById("treatment_dentist_id").value =
       treatment.dentist_id || "";
@@ -2135,24 +2130,6 @@ function initDentalRecordsTab() {
     });
   }
 
-  if (treatmentToothSelector) {
-    treatmentToothSelector.addEventListener("click", (event) => {
-      const button = event.target.closest(".treatment-tooth-option");
-      if (!button) return;
-      const toothNumber = Number(button.dataset.toothNumber);
-      if (dentalSelectedTreatmentTeeth.has(toothNumber)) {
-        dentalSelectedTreatmentTeeth.delete(toothNumber);
-        button.setAttribute("aria-pressed", "false");
-        button.title = `Add tooth #${toothNumber}`;
-      } else {
-        dentalSelectedTreatmentTeeth.add(toothNumber);
-        button.setAttribute("aria-pressed", "true");
-        button.title = `Remove tooth #${toothNumber}`;
-      }
-      updateTreatmentTeethInput();
-    });
-  }
-
   if (toothChartRecordSelect) {
     toothChartRecordSelect.addEventListener("change", () => {
       showToothChartRecord(toothChartRecordSelect.value);
@@ -2214,10 +2191,6 @@ function initDentalRecordsTab() {
           document.getElementById("treatment_dentist_id").value || null,
         visit_date: document.getElementById("treatment_date").value,
         procedure: document.getElementById("treatment_procedure").value,
-        teeth_involved: document.getElementById("treatment_teeth").value,
-        tooth_numbers: [...dentalSelectedTreatmentTeeth].sort(
-          (first, second) => first - second,
-        ),
         notes: document.getElementById("treatment_notes").value,
         price: document.getElementById("treatment_price").value,
         duration: document.getElementById("treatment_duration").value,

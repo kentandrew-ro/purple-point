@@ -16,49 +16,33 @@ const {
 } = require("../lib/businessRules");
 const { createAuditLog, recordAudit } = require("../lib/audit");
 
-function getTreatmentToothNumbers(body, teethInvolved) {
-  const rawNumbers = Array.isArray(body?.tooth_numbers)
-    ? body.tooth_numbers
-    : String(teethInvolved || "").match(/\d+/g) || [];
-  const parsedNumbers = rawNumbers.map(Number);
-  return {
-    invalid: parsedNumbers.some(
-      (toothNumber) =>
-        !Number.isInteger(toothNumber) || toothNumber < 1 || toothNumber > 32,
-    ),
-    toothNumbers: [...new Set(parsedNumbers)].sort(
-      (first, second) => first - second,
-    ),
-  };
-}
-
-async function addMissingTreatmentTeeth(executor, dentalRecordId, toothNumbers) {
-  if (!toothNumbers.length) return;
-  const placeholders = toothNumbers.map(() => "?").join(", ");
-  const [existingRows] = await executor.execute(
+async function getToothChartTreatmentValue(executor, dentalRecordId) {
+  const [rows] = await executor.execute(
     `SELECT tooth_number
      FROM tooth_chart
      WHERE dental_record_id = ?
-       AND tooth_number IN (${placeholders})`,
-    [dentalRecordId, ...toothNumbers],
+       AND condition_status <> 'healthy'
+     ORDER BY tooth_number`,
+    [dentalRecordId],
   );
-  const existing = new Set(existingRows.map((row) => Number(row.tooth_number)));
-  const missing = toothNumbers.filter(
-    (toothNumber) => !existing.has(toothNumber),
-  );
-  if (!missing.length) return;
+  if (!rows.length) return null;
+  return rows.map((row) => `#${row.tooth_number}`).join(", ");
+}
 
-  const valuePlaceholders = missing.map(() => "(?, ?, 'treated')").join(", ");
-  const values = missing.flatMap((toothNumber) => [
+async function syncTreatmentTeethFromChart(executor, dentalRecordId) {
+  const teethInvolved = await getToothChartTreatmentValue(
+    executor,
     dentalRecordId,
-    toothNumber,
-  ]);
-  await executor.execute(
-    `INSERT INTO tooth_chart
-       (dental_record_id, tooth_number, condition_status)
-     VALUES ${valuePlaceholders}`,
-    values,
   );
+  await executor.execute(
+    "UPDATE dental_records SET teeth_involved = ? WHERE dental_record_id = ?",
+    [teethInvolved, dentalRecordId],
+  );
+  await executor.execute(
+    "UPDATE patient_treatments SET teeth_involved = ? WHERE dental_record_id = ?",
+    [teethInvolved, dentalRecordId],
+  );
+  return teethInvolved;
 }
 
 function registerDentalAdminRoutes(app) {
@@ -476,13 +460,15 @@ function registerDentalAdminRoutes(app) {
       }
 
       const [toothRows] = await pool.execute(
-        `SELECT tc.dental_record_id, tc.tooth_number, tc.condition_status,
+        `SELECT dr.dental_record_id, tc.tooth_number, tc.condition_status,
                 dr.appointment_id,
+                dr.teeth_involved,
                 DATE_FORMAT(dr.visit_date, '%Y-%m-%d') AS visit_date
-         FROM tooth_chart tc
-         JOIN dental_records dr ON dr.dental_record_id = tc.dental_record_id
+         FROM dental_records dr
+         LEFT JOIN tooth_chart tc ON tc.dental_record_id = dr.dental_record_id
          WHERE dr.patient_id = ?
-         ORDER BY tc.recorded_at DESC, tc.tooth_chart_id DESC`,
+         ORDER BY dr.visit_date DESC, dr.dental_record_id DESC,
+                  tc.recorded_at DESC, tc.tooth_chart_id DESC`,
         [patientId],
       );
       const toothChartsByRecord = new Map();
@@ -493,7 +479,10 @@ function registerDentalAdminRoutes(app) {
           toothChartsByRecord.set(recordId, {});
         }
         const chart = toothChartsByRecord.get(recordId);
-        if (!Object.prototype.hasOwnProperty.call(chart, row.tooth_number)) {
+        if (
+          row.tooth_number !== null &&
+          !Object.prototype.hasOwnProperty.call(chart, row.tooth_number)
+        ) {
           chart[row.tooth_number] = row.condition_status;
         }
         if (!toothRecordMetadata.has(recordId)) {
@@ -501,6 +490,7 @@ function registerDentalAdminRoutes(app) {
             dental_record_id: row.dental_record_id,
             appointment_id: row.appointment_id,
             date: row.visit_date,
+            teeth: row.teeth_involved || "—",
           });
         }
       });
@@ -583,8 +573,9 @@ function registerDentalAdminRoutes(app) {
         if (treatmentRecordIds.has(recordId)) return;
         toothCharts.push({
           ...metadata,
-          procedure: "Legacy tooth chart",
-          teeth: "—",
+          procedure: metadata.appointment_id
+            ? "Appointment dental record"
+            : "Unlinked dental record",
           doctor: "—",
           tooth_chart: toothChartsByRecord.get(recordId) || {},
         });
@@ -634,8 +625,6 @@ function registerDentalAdminRoutes(app) {
       const dentist_id = dentist_id_raw ? parseInt(dentist_id_raw, 10) : null;
       const visit_date = requireField(body, "visit_date");
       const procedure = requireField(body, "procedure");
-      const teeth_involved = requireField(body, "teeth_involved") || null;
-      const toothSelection = getTreatmentToothNumbers(body, teeth_involved);
       const notes = requireField(body, "notes") || null;
       const price_raw = requireField(body, "price");
       const price = price_raw !== null ? parseFloat(price_raw) : 0;
@@ -647,13 +636,6 @@ function registerDentalAdminRoutes(app) {
       const missing = [];
       if (!visit_date) missing.push("visit_date");
       if (!procedure) missing.push("procedure");
-
-      if (toothSelection.invalid) {
-        return res.status(400).json({
-          ok: false,
-          error: "Every selected tooth number must be between 1 and 32.",
-        });
-      }
 
       if (missing.length) {
         return res.status(400).json({
@@ -692,6 +674,8 @@ function registerDentalAdminRoutes(app) {
             .json({ ok: false, error: "Dentist not found." });
         }
       }
+
+      const teeth_involved = await getToothChartTreatmentValue(pool, recordId);
 
       await pool.execute(
         `UPDATE dental_records
@@ -737,12 +721,6 @@ function registerDentalAdminRoutes(app) {
           [recordId, newTreatment.insertId, teeth_involved, price, duration],
         );
       }
-
-      await addMissingTreatmentTeeth(
-        pool,
-        recordId,
-        toothSelection.toothNumbers,
-      );
 
       await recordAudit(req, {
         action: "UPDATE_DENTAL_RECORD",
@@ -933,8 +911,6 @@ function registerDentalAdminRoutes(app) {
       let dentist_id = dentist_id_raw ? parseInt(dentist_id_raw, 10) : null;
       let visit_date = requireField(body, "visit_date");
       const procedure = requireField(body, "procedure");
-      const teeth_involved = requireField(body, "teeth_involved") || null;
-      const toothSelection = getTreatmentToothNumbers(body, teeth_involved);
       const notes = requireField(body, "notes") || null;
       const price_raw = requireField(body, "price");
       const price = price_raw !== null ? parseFloat(price_raw) : 0;
@@ -943,17 +919,11 @@ function registerDentalAdminRoutes(app) {
         duration_raw !== null ? parseInt(duration_raw, 10) : null;
       const category = requireField(body, "category") || "dental";
       let linkedDentalRecordId = null;
+      let teeth_involved = null;
 
       const missing = [];
       if (!patient_id) missing.push("patient_id");
       if (!procedure) missing.push("procedure");
-
-      if (toothSelection.invalid) {
-        return res.status(400).json({
-          ok: false,
-          error: "Every selected tooth number must be between 1 and 32.",
-        });
-      }
 
       if (missing.length) {
         return res.status(400).json({
@@ -1034,6 +1004,10 @@ function registerDentalAdminRoutes(app) {
 
       let dentalRecordId = linkedDentalRecordId;
       if (dentalRecordId) {
+        teeth_involved = await getToothChartTreatmentValue(
+          pool,
+          dentalRecordId,
+        );
         await pool.execute(
           `UPDATE dental_records
            SET dentist_id = ?, visit_date = ?, treatment_plan_notes = ?, teeth_involved = ?
@@ -1083,12 +1057,6 @@ function registerDentalAdminRoutes(app) {
           price,
           duration,
         ],
-      );
-
-      await addMissingTreatmentTeeth(
-        pool,
-        dentalRecordId,
-        toothSelection.toothNumbers,
       );
 
       await recordAudit(req, {
@@ -1278,15 +1246,19 @@ function registerDentalAdminRoutes(app) {
     if (!requireRole(req, res, ["superadmin", "doctor"])) return;
 
     const body = req.body || {};
-    const dentalRecordId = parseInt(
+    let dentalRecordId = parseInt(
       requireField(body, "dental_record_id"),
       10,
     );
+    const appointmentId = parseInt(requireField(body, "appointment_id"), 10);
+    const patientId = parseInt(requireField(body, "patient_id"), 10);
     const toothNumber = parseInt(requireField(body, "tooth_number"), 10);
     const conditionStatus = requireField(body, "condition_status");
 
     const missing = [];
-    if (!dentalRecordId) missing.push("dental_record_id");
+    if (!dentalRecordId && (!appointmentId || !patientId)) {
+      missing.push("dental_record_id or appointment_id and patient_id");
+    }
     if (!toothNumber) missing.push("tooth_number");
     if (!conditionStatus) missing.push("condition_status");
     if (missing.length) {
@@ -1310,13 +1282,70 @@ function registerDentalAdminRoutes(app) {
     try {
       conn = await pool.getConnection();
       await conn.beginTransaction();
-      const [records] = await conn.execute(
-        `SELECT dental_record_id, patient_id, appointment_id
-         FROM dental_records
-         WHERE dental_record_id = ?
-         FOR UPDATE`,
-        [dentalRecordId],
-      );
+      let records;
+      if (dentalRecordId) {
+        [records] = await conn.execute(
+          `SELECT dental_record_id, patient_id, appointment_id
+           FROM dental_records
+           WHERE dental_record_id = ?
+           FOR UPDATE`,
+          [dentalRecordId],
+        );
+      } else {
+        const [appointments] = await conn.execute(
+          `SELECT appointment_id, patient_id, dentist_id,
+                  DATE_FORMAT(appointment_date, '%Y-%m-%d') AS appointment_date
+           FROM appointments
+           WHERE appointment_id = ?
+           FOR UPDATE`,
+          [appointmentId],
+        );
+        if (!appointments.length) {
+          await conn.rollback();
+          return res
+            .status(404)
+            .json({ ok: false, error: "Appointment not found." });
+        }
+        if (appointments[0].patient_id !== patientId) {
+          await conn.rollback();
+          return res.status(400).json({
+            ok: false,
+            error: "That appointment does not belong to this patient.",
+          });
+        }
+
+        [records] = await conn.execute(
+          `SELECT dental_record_id, patient_id, appointment_id
+           FROM dental_records
+           WHERE appointment_id = ?
+           FOR UPDATE`,
+          [appointmentId],
+        );
+        if (!records.length) {
+          const [newRecord] = await conn.execute(
+            `INSERT INTO dental_records
+               (patient_id, appointment_id, dentist_id, recorded_by, visit_date)
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+              patientId,
+              appointmentId,
+              appointments[0].dentist_id,
+              req.session.userId,
+              appointments[0].appointment_date,
+            ],
+          );
+          dentalRecordId = newRecord.insertId;
+          records = [
+            {
+              dental_record_id: dentalRecordId,
+              patient_id: patientId,
+              appointment_id: appointmentId,
+            },
+          ];
+        } else {
+          dentalRecordId = records[0].dental_record_id;
+        }
+      }
       if (!records.length) {
         await conn.rollback();
         return res
@@ -1338,6 +1367,11 @@ function registerDentalAdminRoutes(app) {
         );
       }
 
+      const teethInvolved = await syncTreatmentTeethFromChart(
+        conn,
+        dentalRecordId,
+      );
+
       await createAuditLog(conn, req, {
         action: "UPDATE_TOOTH_CHART",
         entityType: "tooth_chart",
@@ -1348,6 +1382,7 @@ function registerDentalAdminRoutes(app) {
           appointment_id: records[0].appointment_id,
           tooth_number: toothNumber,
           condition_status: conditionStatus,
+          teeth_involved: teethInvolved,
         },
       });
       await conn.commit();
@@ -1357,6 +1392,7 @@ function registerDentalAdminRoutes(app) {
         dental_record_id: dentalRecordId,
         tooth_number: toothNumber,
         condition_status: conditionStatus,
+        teeth_involved: teethInvolved,
       });
     } catch (err) {
       if (conn) await conn.rollback();
