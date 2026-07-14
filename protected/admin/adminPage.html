@@ -36,7 +36,7 @@
           >
         </li>
         <li>
-          <a href="#" data-roles="superadmin staff" onclick="showTab('set-schedules')">Set Schedules</a>
+          <a href="#" data-roles="superadmin doctor staff" onclick="showTab('set-schedules')">Set Schedules</a>
         </li>
       </ul>
       <span class="section-label">Patients</span>
@@ -139,11 +139,18 @@
 
       <div id="tab-set-schedules" style="display: none">
         <h2>Set &amp; Manage Schedules</h2>
-        <p>Add appointments or adjust clinic hours.</p>
+        <p id="schedule-tab-description">
+          Add appointments or adjust doctor availability.
+        </p>
 
         <div id="view-choose" class="card">
           <button type="button" id="btn-show-add">Add Appointment</button>
-          <button type="button" id="btn-show-cancel">Clinic Hours</button>
+          <button type="button" id="btn-show-cancel">
+            Doctor Availability
+          </button>
+          <button type="button" id="btn-show-staff-shift" hidden>
+            My Shift Schedule
+          </button>
         </div>
 
         <div id="appointment-form-card" class="card" style="display: none">
@@ -219,9 +226,16 @@
         </div>
 
         <div id="clinic-hours-form-card" class="card" style="display: none">
-          <h2>Clinic Hours by Doctor</h2>
+          <h2 id="clinic-hours-heading">Doctor Availability</h2>
+          <p id="clinic-hours-description">
+            Add the regular days and times when a doctor accepts appointments.
+          </p>
           <form id="clinic-hours-form">
-            <div class="field" style="position: relative">
+            <div
+              id="clinic-dentist-field"
+              class="field"
+              style="position: relative"
+            >
               <label for="clinic-dentist-search">Dentist</label>
               <input
                 id="clinic-dentist-search"
@@ -259,6 +273,50 @@
             <button type="submit">Save Hours</button>
           </form>
           <div id="clinic-hours-result" style="margin-top: 16px"></div>
+        </div>
+
+        <div id="staff-shift-form-card" class="card" style="display: none">
+          <h2>My Shift Schedule</h2>
+          <p>
+            Set the regular work days and the times when your shift starts and
+            ends.
+          </p>
+          <p>
+            <strong>Current schedule:</strong>
+            <span id="staff-current-shift">Loading...</span>
+          </p>
+          <form id="staff-shift-form">
+            <div class="field">
+              <label for="staff-shift-days">Work Days</label>
+              <input
+                id="staff-shift-days"
+                name="work_days"
+                maxlength="60"
+                placeholder="For example: Monday to Friday"
+                required
+              />
+            </div>
+            <div class="field">
+              <label for="staff-shift-start">Shift Starts</label>
+              <input
+                id="staff-shift-start"
+                name="start_time"
+                type="time"
+                required
+              />
+            </div>
+            <div class="field">
+              <label for="staff-shift-end">Shift Ends</label>
+              <input
+                id="staff-shift-end"
+                name="end_time"
+                type="time"
+                required
+              />
+            </div>
+            <button type="submit">Save Shift Schedule</button>
+          </form>
+          <div id="staff-shift-result" style="margin-top: 16px"></div>
         </div>
       </div>
 
@@ -897,6 +955,9 @@
                   <option value="UPDATE_DENTIST_SCHEDULE">
                     Update dentist schedule
                   </option>
+                  <option value="UPDATE_STAFF_SHIFT_SCHEDULE">
+                    Update staff shift schedule
+                  </option>
                   <option value="CREATE_DENTAL_RECORD">
                     Create dental record
                   </option>
@@ -927,6 +988,7 @@
                   <option value="">All record types</option>
                   <option value="appointment">Appointment</option>
                   <option value="dentist_schedule">Dentist schedule</option>
+                  <option value="staff">Staff</option>
                   <option value="dental_record">Dental record</option>
                   <option value="billing">Billing</option>
                   <option value="payment">Payment</option>

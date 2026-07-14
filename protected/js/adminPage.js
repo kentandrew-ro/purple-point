@@ -13,6 +13,7 @@ const ROLE_TABS = Object.freeze({
   doctor: new Set([
     "dashboard",
     "view-appointments",
+    "set-schedules",
     "patient-info",
     "patient-status",
     "dental-records",
@@ -51,6 +52,55 @@ function showTab(name) {
   if (name === "billing") loadBillings();
   if (name === "audit-logs") loadAuditLogs();
   if (name === "doctor-profiles") loadDoctorStaffSummaries();
+  if (name === "set-schedules") configureScheduleInterface();
+}
+
+function configureScheduleInterface() {
+  const isDoctor = managementRole === "doctor";
+  const isStaff = managementRole === "staff";
+  const appointmentButton = document.getElementById("btn-show-add");
+  const doctorHoursButton = document.getElementById("btn-show-cancel");
+  const staffShiftButton = document.getElementById("btn-show-staff-shift");
+  const appointmentCard = document.getElementById("appointment-form-card");
+  const doctorHoursCard = document.getElementById("clinic-hours-form-card");
+  const staffShiftCard = document.getElementById("staff-shift-form-card");
+  const dentistField = document.getElementById("clinic-dentist-field");
+  const heading = document.getElementById("clinic-hours-heading");
+  const description = document.getElementById("clinic-hours-description");
+  const tabDescription = document.getElementById("schedule-tab-description");
+
+  if (appointmentButton) appointmentButton.hidden = isDoctor;
+  if (doctorHoursButton) doctorHoursButton.hidden = isStaff;
+  if (staffShiftButton) staffShiftButton.hidden = !isStaff;
+  if (dentistField) dentistField.hidden = isDoctor;
+
+  if (isDoctor) {
+    if (heading) heading.textContent = "My Clinic Hours";
+    if (description) {
+      description.textContent =
+        "Add the regular days and times when you accept appointments.";
+    }
+    if (tabDescription) {
+      tabDescription.textContent = "Manage your own appointment availability.";
+    }
+    if (appointmentCard) appointmentCard.style.display = "none";
+    if (doctorHoursCard) doctorHoursCard.style.display = "block";
+    if (staffShiftCard) staffShiftCard.style.display = "none";
+    return;
+  }
+
+  if (heading) heading.textContent = "Doctor Availability";
+  if (description) {
+    description.textContent =
+      "Add the regular days and times when a doctor accepts appointments.";
+  }
+  if (tabDescription) {
+    tabDescription.textContent = isStaff
+      ? "Add appointments or update your own staff shift schedule."
+      : "Add appointments or adjust doctor availability.";
+  }
+  if (doctorHoursCard) doctorHoursCard.style.display = "none";
+  if (staffShiftCard) staffShiftCard.style.display = "none";
 }
 
 async function initializeRoleInterface() {
@@ -1017,12 +1067,14 @@ async function submitClinicHoursForm(e) {
   const resultBox = document.getElementById("clinic-hours-result");
   const submitBtn = form.querySelector('button[type="submit"]');
   if (submitBtn) submitBtn.disabled = true;
-  showResult(resultBox, "Saving clinic hours...");
+  showResult(resultBox, "Saving doctor availability...");
 
   try {
     const payload = getFormPayload(form);
     const missing = [];
-    if (!payload.dentist_id) missing.push("dentist_id");
+    if (managementRole !== "doctor" && !payload.dentist_id) {
+      missing.push("dentist_id");
+    }
     if (!payload.day_of_week) missing.push("day_of_week");
     if (!payload.start_time) missing.push("start_time");
     if (!payload.end_time) missing.push("end_time");
@@ -1043,18 +1095,70 @@ async function submitClinicHoursForm(e) {
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
-      throw new Error(data.error || "Failed to save clinic hours");
+      throw new Error(data.error || "Failed to save doctor availability");
     }
 
     showResult(
       resultBox,
-      `Clinic hours saved successfully. Schedule ID: ${data.schedule_id ?? "N/A"}.`,
+      `Doctor availability saved successfully. Schedule ID: ${data.schedule_id ?? "N/A"}.`,
     );
     form.reset();
   } catch (err) {
     showResult(resultBox, `Error: ${err?.message || "Unknown error"}`);
   } finally {
     if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+async function loadStaffShiftSchedule() {
+  const currentShift = document.getElementById("staff-current-shift");
+  if (!currentShift || managementRole !== "staff") return;
+
+  currentShift.textContent = "Loading...";
+  try {
+    const response = await fetch("/api/staff/me/shift-schedule");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Unable to load your shift schedule.");
+    }
+    currentShift.textContent = data.shift_schedule || "Not set";
+  } catch (error) {
+    currentShift.textContent = error.message;
+  }
+}
+
+async function submitStaffShiftForm(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const resultBox = document.getElementById("staff-shift-result");
+  const submitButton = form.querySelector('button[type="submit"]');
+  const payload = getFormPayload(form);
+
+  if (payload.start_time >= payload.end_time) {
+    showResult(resultBox, "Error: Shift start must be before shift end.");
+    return;
+  }
+
+  if (submitButton) submitButton.disabled = true;
+  showResult(resultBox, "Saving shift schedule...");
+  try {
+    const response = await fetch("/api/staff/me/shift-schedule", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Unable to save your shift schedule.");
+    }
+    document.getElementById("staff-current-shift").textContent =
+      data.shift_schedule;
+    showResult(resultBox, "Shift schedule saved successfully.");
+    form.reset();
+  } catch (error) {
+    showResult(resultBox, `Error: ${error.message}`);
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
 }
 
@@ -1147,8 +1251,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const staffCard = document.getElementById("staff-form-card");
   const btnAppointment = document.getElementById("btn-show-add");
   const btnClinicHours = document.getElementById("btn-show-cancel");
+  const btnStaffShift = document.getElementById("btn-show-staff-shift");
   const appointmentCard = document.getElementById("appointment-form-card");
   const clinicHoursCard = document.getElementById("clinic-hours-form-card");
+  const staffShiftCard = document.getElementById("staff-shift-form-card");
 
   function showDoctorForm() {
     if (doctorCard) doctorCard.style.display = "block";
@@ -1163,11 +1269,20 @@ document.addEventListener("DOMContentLoaded", () => {
   function showAppointmentForm() {
     if (appointmentCard) appointmentCard.style.display = "block";
     if (clinicHoursCard) clinicHoursCard.style.display = "none";
+    if (staffShiftCard) staffShiftCard.style.display = "none";
   }
 
   function showClinicHoursForm() {
     if (appointmentCard) appointmentCard.style.display = "none";
     if (clinicHoursCard) clinicHoursCard.style.display = "block";
+    if (staffShiftCard) staffShiftCard.style.display = "none";
+  }
+
+  function showStaffShiftForm() {
+    if (appointmentCard) appointmentCard.style.display = "none";
+    if (clinicHoursCard) clinicHoursCard.style.display = "none";
+    if (staffShiftCard) staffShiftCard.style.display = "block";
+    loadStaffShiftSchedule();
   }
 
   if (btnDoctor) btnDoctor.addEventListener("click", showDoctorForm);
@@ -1176,11 +1291,14 @@ document.addEventListener("DOMContentLoaded", () => {
     btnAppointment.addEventListener("click", showAppointmentForm);
   if (btnClinicHours)
     btnClinicHours.addEventListener("click", showClinicHoursForm);
+  if (btnStaffShift)
+    btnStaffShift.addEventListener("click", showStaffShiftForm);
 
   const doctorForm = document.getElementById("doctor-form");
   const staffForm = document.getElementById("staff-form");
   const appointmentForm = document.getElementById("add-appointment-form");
   const clinicHoursForm = document.getElementById("clinic-hours-form");
+  const staffShiftForm = document.getElementById("staff-shift-form");
 
   if (doctorForm) doctorForm.addEventListener("submit", submitDoctorForm);
   if (staffForm) staffForm.addEventListener("submit", submitStaffForm);
@@ -1193,6 +1311,8 @@ document.addEventListener("DOMContentLoaded", () => {
     );
   if (clinicHoursForm)
     clinicHoursForm.addEventListener("submit", submitClinicHoursForm);
+  if (staffShiftForm)
+    staffShiftForm.addEventListener("submit", submitStaffShiftForm);
 
   const userSearchInput = document.getElementById("user-search");
   const userSuggestions = document.getElementById("user-suggestions");

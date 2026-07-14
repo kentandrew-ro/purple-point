@@ -777,18 +777,129 @@ function registerAuthProfileRoutes(
     }
   });
 
+  app.get("/api/staff/me/shift-schedule", async (req, res) => {
+    if (!requireRole(req, res, ["staff"])) return;
+
+    try {
+      const [rows] = await pool.execute(
+        "SELECT staff_id, shift_schedule FROM staff WHERE user_id = ?",
+        [req.session.userId],
+      );
+      if (!rows.length) {
+        return res
+          .status(404)
+          .json({ ok: false, error: "Staff profile not found." });
+      }
+      return res.json({
+        ok: true,
+        staff_id: rows[0].staff_id,
+        shift_schedule: rows[0].shift_schedule,
+      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    }
+  });
+
+  app.patch("/api/staff/me/shift-schedule", async (req, res) => {
+    if (!requireRole(req, res, ["staff"])) return;
+
+    const workDays = requireField(req.body, "work_days");
+    const startTime = requireField(req.body, "start_time");
+    const endTime = requireField(req.body, "end_time");
+    const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+    if (!workDays || !startTime || !endTime) {
+      return res.status(400).json({
+        ok: false,
+        error: "Work days, shift start, and shift end are required.",
+      });
+    }
+    if (workDays.length > 60) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Work days must be 60 characters or fewer." });
+    }
+    if (!timePattern.test(startTime) || !timePattern.test(endTime)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Please enter valid shift times." });
+    }
+    if (startTime >= endTime) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Shift start must be before shift end." });
+    }
+
+    const shiftSchedule = `${workDays}: ${startTime}-${endTime}`;
+    let conn;
+    try {
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
+      const [rows] = await conn.execute(
+        `SELECT staff_id, shift_schedule
+         FROM staff
+         WHERE user_id = ?
+         FOR UPDATE`,
+        [req.session.userId],
+      );
+      if (!rows.length) {
+        await conn.rollback();
+        return res
+          .status(404)
+          .json({ ok: false, error: "Staff profile not found." });
+      }
+
+      await conn.execute(
+        "UPDATE staff SET shift_schedule = ? WHERE staff_id = ?",
+        [shiftSchedule, rows[0].staff_id],
+      );
+      await createAuditLog(conn, req, {
+        action: "UPDATE_STAFF_SHIFT_SCHEDULE",
+        entityType: "staff",
+        entityId: rows[0].staff_id,
+        description: `Updated shift schedule for staff #${rows[0].staff_id}`,
+        oldValues: { shift_schedule: rows[0].shift_schedule },
+        newValues: { shift_schedule: shiftSchedule },
+      });
+      await conn.commit();
+
+      return res.json({ ok: true, shift_schedule: shiftSchedule });
+    } catch (err) {
+      if (conn) await conn.rollback();
+      console.error(err);
+      return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    } finally {
+      if (conn) conn.release();
+    }
+  });
+
   app.post("/api/dentist-schedule", async (req, res) => {
     if (!req.session.userId) {
       return res.status(401).json({ error: "Not logged in" });
     }
-    if (!requireRole(req, res, ["superadmin", "staff"])) return;
+    if (!requireRole(req, res, ["superadmin", "doctor"])) return;
 
     try {
       const body = req.body || {};
-      const dentist_id = parseInt(requireField(body, "dentist_id"), 10);
+      const role = normalizeRole(req.session.role);
+      let dentist_id = parseInt(requireField(body, "dentist_id"), 10);
       const day_of_week = requireField(body, "day_of_week");
       const start_time = requireField(body, "start_time");
       const end_time = requireField(body, "end_time");
+
+      if (role === "doctor") {
+        const [ownProfiles] = await pool.execute(
+          "SELECT dentist_id FROM dentist WHERE user_id = ?",
+          [req.session.userId],
+        );
+        if (!ownProfiles.length) {
+          return res
+            .status(404)
+            .json({ ok: false, error: "Doctor profile not found." });
+        }
+        dentist_id = ownProfiles[0].dentist_id;
+      }
 
       const missing = [];
       if (!dentist_id) missing.push("dentist_id");
@@ -854,7 +965,7 @@ function registerAuthProfileRoutes(
         return res.status(409).json({
           ok: false,
           error:
-            "This clinic-hours entry overlaps an existing active schedule.",
+            "These doctor availability hours overlap an existing active schedule.",
         });
       }
 
