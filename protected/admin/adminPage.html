@@ -45,6 +45,9 @@
           <a href="#" data-roles="superadmin doctor" onclick="showTab('patient-info')">Patient Information</a>
         </li>
         <li>
+          <a href="#" data-roles="superadmin doctor staff" onclick="showTab('patient-status')">Patient Status</a>
+        </li>
+        <li>
           <a href="#" data-roles="superadmin doctor" onclick="showTab('dental-records')">Dental Records</a>
         </li>
       </ul>
@@ -104,7 +107,33 @@
 
       <div id="tab-view-appointments" style="display: none">
         <h2>View Appointments</h2>
-        <p>Monthly calendar of all scheduled appointments.</p>
+        <p>Monthly calendar of appointments by status.</p>
+        <div
+          class="appointment-status-legend"
+          aria-label="Appointment status colors"
+        >
+          <span class="appointment-status-legend__item"
+            ><span
+              class="appointment-status-legend__swatch appointment-calendar-event--scheduled"
+              aria-hidden="true"
+            ></span
+            >Scheduled</span
+          >
+          <span class="appointment-status-legend__item"
+            ><span
+              class="appointment-status-legend__swatch appointment-calendar-event--completed"
+              aria-hidden="true"
+            ></span
+            >Completed</span
+          >
+          <span class="appointment-status-legend__item"
+            ><span
+              class="appointment-status-legend__swatch appointment-calendar-event--cancelled"
+              aria-hidden="true"
+            ></span
+            >Cancelled</span
+          >
+        </div>
         <div id="admin-appointments-calendar">Loading appointments…</div>
       </div>
 
@@ -248,6 +277,38 @@
             <div id="patient-info-suggestions" class="suggestions"></div>
           </div>
           <div id="patient-info-details" style="margin-top: 16px"></div>
+        </div>
+      </div>
+      <div id="tab-patient-status" style="display: none">
+        <h2>Patient Status</h2>
+        <p>Update whether a patient is active, inactive, or archived.</p>
+        <div class="card" style="margin-top: 16px">
+          <div class="field" style="position: relative">
+            <label for="patient-status-search">Search patient</label>
+            <input
+              id="patient-status-search"
+              type="text"
+              placeholder="Search by name, contact, or email"
+              autocomplete="off"
+            />
+            <div id="patient-status-suggestions" class="suggestions"></div>
+          </div>
+          <div id="patient-status-editor" style="display: none; margin-top: 18px">
+            <h3 id="patient-status-name"></h3>
+            <input id="patient-status-id" type="hidden" />
+            <div class="field">
+              <label for="patient-status-value">Status</label>
+              <select id="patient-status-value">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+            <div class="actions">
+              <button id="patient-status-save" type="button">Save Status</button>
+            </div>
+          </div>
+          <div id="patient-status-message" class="form-message" aria-live="polite"></div>
         </div>
       </div>
       <div id="tab-dental-records" style="display: none">
@@ -815,6 +876,7 @@
           <option value="ASSIGN_ROLE">Assign role</option>
           <option value="PROMOTE_USER">Promote user (legacy)</option>
           <option value="UPDATE_PATIENT">Update patient</option>
+          <option value="UPDATE_PATIENT_STATUS">Update patient status</option>
         </select>
 
         <label for="audit-entity-filter">Record type</label>
@@ -1027,6 +1089,7 @@
     </div>
 
     <!-- <script src="/js/add_doctor_staff_profile.js"></script> -->
+    <script src="/public_js/requiredFields.js"></script>
     <script src="/public_js/currentUser.js"></script>
     <script src="/js/appointments.js"></script>
     <script src="/js/adminPage.js"></script>

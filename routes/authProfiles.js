@@ -9,8 +9,10 @@ const {
   requireRole,
 } = require("../lib/http");
 const {
+  getPasswordValidationError,
   getDoctorProfileValidationError,
   isIsoDate,
+  isValidEmail,
   validateGender,
 } = require("../lib/businessRules");
 const { createAuditLog, recordAudit } = require("../lib/audit");
@@ -20,8 +22,36 @@ function registerAuthProfileRoutes(
   { sessionCookieName = "purplepoint.sid", isProduction = false } = {},
 ) {
   app.post("/api/signup", async (req, res) => {
-    const { firstName, lastName, username, email, password, contactNumber } =
-      req.body;
+    const body = req.body || {};
+    const firstName = requireField(body, "firstName");
+    const lastName = requireField(body, "lastName");
+    const username = requireField(body, "username");
+    const email = requireField(body, "email")?.toLowerCase();
+    const contactNumber = requireField(body, "contactNumber");
+    const password = body.password;
+
+    if (
+      !firstName ||
+      !lastName ||
+      !username ||
+      !email ||
+      typeof password !== "string" ||
+      !password ||
+      !contactNumber
+    ) {
+      return res.status(400).json({ error: "All fields are required." });
+    }
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({
+        error: "Enter a valid email address with @ and a domain such as .com or .ph.",
+      });
+    }
+
+    const passwordError = getPasswordValidationError(password);
+    if (passwordError) {
+      return res.status(400).json({ error: passwordError });
+    }
 
     try {
       const hashedPassword = await bcrypt.hash(password, 10);
@@ -164,6 +194,7 @@ function registerAuthProfileRoutes(
     try {
       const [rows] = await pool.execute(
         `SELECT p.*, u.first_name, u.last_name, u.contact_number, u.email,
+                DATE_FORMAT(p.date_of_birth, '%Y-%m-%d') AS date_of_birth,
                 pr.patient_records_id, pr.emergency_contact_name,
                 pr.emergency_contact_number,
                 COALESCE(pr.patient_status, 'active') AS patient_status,
@@ -181,6 +212,7 @@ function registerAuthProfileRoutes(
 
       return res.json({
         ok: true,
+        identityLocked: Boolean(rows[0].patient_id),
         profileComplete: Boolean(
           rows[0].patient_id &&
           rows[0].patient_records_id &&
@@ -209,17 +241,17 @@ function registerAuthProfileRoutes(
       // first_name, last_name, and contact_number now live on `users`,
       // shared across patients/staff/dentist. Everything else here stays
       // in `patients`.
-      const first_name = requireField(body, "first_name");
-      const last_name = requireField(body, "last_name");
-      const date_of_birth = requireField(body, "date_of_birth");
-      const gender = requireField(body, "gender");
+      const submitted_first_name = requireField(body, "first_name");
+      const submitted_last_name = requireField(body, "last_name");
+      const submitted_date_of_birth = requireField(body, "date_of_birth");
+      const submitted_gender = requireField(body, "gender");
       const contact_number = requireField(body, "contact_number");
       const house_no = requireField(body, "house_no");
       const street = requireField(body, "street");
       const barangay = requireField(body, "barangay");
       const city = requireField(body, "city");
       const zip_code = requireField(body, "zip_code");
-      const blood_type = requireField(body, "blood_type");
+      const submitted_blood_type = requireField(body, "blood_type");
       const emergency_contact_name = requireField(
         body,
         "emergency_contact_name",
@@ -228,11 +260,53 @@ function registerAuthProfileRoutes(
         body,
         "emergency_contact_number",
       );
-      const patient_status = requireField(body, "patient_status") || "active";
+      const [identityRows] = await conn.execute(
+        `SELECT u.first_name, u.last_name, p.patient_id,
+                DATE_FORMAT(p.date_of_birth, '%Y-%m-%d') AS date_of_birth,
+                p.gender, p.blood_type,
+                COALESCE(pr.patient_status, 'active') AS patient_status
+         FROM users u
+         LEFT JOIN patients p ON p.user_id = u.user_id
+         LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
+         WHERE u.user_id = ?`,
+        [req.session.userId],
+      );
+      if (!identityRows.length) {
+        return res.status(404).json({ ok: false, error: "User not found." });
+      }
+
+      const identity = identityRows[0];
+      const identityLocked = Boolean(identity.patient_id);
+      const first_name = identity.first_name;
+      const last_name = identity.last_name;
+      const date_of_birth = identityLocked
+        ? identity.date_of_birth
+        : submitted_date_of_birth;
+      const gender = identityLocked ? identity.gender : submitted_gender;
+      const blood_type = identityLocked
+        ? identity.blood_type
+        : submitted_blood_type;
+      const patient_status = identityLocked
+        ? identity.patient_status
+        : "active";
+
+      if (
+        identityLocked &&
+        ((submitted_first_name && submitted_first_name !== first_name) ||
+          (submitted_last_name && submitted_last_name !== last_name) ||
+          (submitted_date_of_birth &&
+            submitted_date_of_birth !== date_of_birth) ||
+          (submitted_gender && submitted_gender.toLowerCase() !== gender) ||
+          (submitted_blood_type && submitted_blood_type !== blood_type))
+      ) {
+        return res.status(409).json({
+          ok: false,
+          error:
+            "First name, last name, date of birth, gender, and blood type cannot be changed after profile creation.",
+        });
+      }
 
       const missing = [];
-      if (!first_name) missing.push("first_name");
-      if (!last_name) missing.push("last_name");
       if (!date_of_birth) missing.push("date_of_birth");
       if (!gender) missing.push("gender");
       if (!contact_number) missing.push("contact_number");
@@ -269,33 +343,27 @@ function registerAuthProfileRoutes(
       await conn.beginTransaction();
 
       await conn.execute(
-        `UPDATE users SET first_name = ?, last_name = ?, contact_number = ?
-         WHERE user_id = ?`,
-        [first_name, last_name, contact_number, req.session.userId],
+        "UPDATE users SET contact_number = ? WHERE user_id = ?",
+        [contact_number, req.session.userId],
       );
 
-      const [existing] = await conn.execute(
-        "SELECT patient_id FROM patients WHERE user_id = ?",
-        [req.session.userId],
-      );
+      const existing = identityLocked
+        ? [{ patient_id: identity.patient_id }]
+        : [];
 
       let patientId;
       if (existing.length) {
         patientId = existing[0].patient_id;
         await conn.execute(
           `UPDATE patients SET
-            date_of_birth = ?, gender = ?, house_no = ?, street = ?,
-            barangay = ?, city = ?, zip_code = ?, blood_type = ?
+            house_no = ?, street = ?, barangay = ?, city = ?, zip_code = ?
           WHERE user_id = ?`,
           [
-            date_of_birth,
-            normalizedGender,
             house_no,
             street,
             barangay,
             city,
             zip_code,
-            blood_type,
             req.session.userId,
           ],
         );

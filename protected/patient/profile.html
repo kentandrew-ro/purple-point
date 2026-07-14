@@ -35,6 +35,9 @@
                   id="profile-first-name"
                   name="first_name"
                   placeholder="First name"
+                  readonly
+                  aria-readonly="true"
+                  title="Your name cannot be changed from the patient profile."
                   required
                 />
               </div>
@@ -44,6 +47,9 @@
                   id="profile-last-name"
                   name="last_name"
                   placeholder="Last name"
+                  readonly
+                  aria-readonly="true"
+                  title="Your name cannot be changed from the patient profile."
                   required
                 />
               </div>
@@ -92,6 +98,10 @@
                 </select>
               </div>
             </div>
+            <p class="form-hint identity-lock-note">
+              First and last name cannot be edited here. Date of birth, gender,
+              and blood type are locked after the profile is created.
+            </p>
             <h3 style="margin: 12px 0 0">Address</h3>
             <div class="form-grid">
               <div class="field-group">
@@ -161,18 +171,6 @@
                   required
                 />
               </div>
-              <div class="field-group">
-                <label for="profile-patient-status">Patient status</label>
-                <select
-                  id="profile-patient-status"
-                  name="patient_status"
-                  required
-                >
-                  <option value="active" selected>Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="archived">Archived</option>
-                </select>
-              </div>
             </div>
             <div class="actions">
               <button type="submit">Save Patient Profile</button
@@ -189,6 +187,7 @@
         </section>
       </div>
     </main>
+    <script src="/public_js/requiredFields.js"></script>
     <script src="/public_js/currentUser.js"></script>
     <script src="/js/profile.js"></script>
   </body>

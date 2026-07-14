@@ -14,8 +14,16 @@ const PROFILE_DRAFT_FIELDS = [
   "blood_type",
   "emergency_contact_name",
   "emergency_contact_number",
-  "patient_status",
 ];
+
+const LOGIN_PROFILE_NAME_FIELDS = new Set(["first_name", "last_name"]);
+const LOGIN_PROFILE_LOCKED_IDENTITY_FIELDS = new Set([
+  "first_name",
+  "last_name",
+  "date_of_birth",
+  "gender",
+  "blood_type",
+]);
 
 let loginProfileDraftKey = null;
 
@@ -46,8 +54,9 @@ function saveProfileDraft(form) {
   } catch {}
 }
 
-function fillProfileForm(form, values) {
+function fillProfileForm(form, values, excludedFields = new Set()) {
   PROFILE_DRAFT_FIELDS.forEach((name) => {
+    if (excludedFields.has(name)) return;
     if (
       form.elements[name] &&
       values[name] !== null &&
@@ -55,6 +64,22 @@ function fillProfileForm(form, values) {
     ) {
       form.elements[name].value = values[name];
     }
+  });
+}
+
+function setLoginProfileIdentityLock(form, identityLocked) {
+  form.elements.first_name.readOnly = true;
+  form.elements.last_name.readOnly = true;
+  form.elements.date_of_birth.readOnly = identityLocked;
+  form.elements.gender.disabled = identityLocked;
+  form.elements.blood_type.disabled = identityLocked;
+
+  ["date_of_birth", "gender", "blood_type"].forEach((name) => {
+    const field = form.elements[name];
+    field.setAttribute("aria-disabled", String(identityLocked));
+    field.title = identityLocked
+      ? "This information is locked after profile creation."
+      : "This information will be locked after the profile is created.";
   });
 }
 
@@ -98,9 +123,16 @@ async function showProfileCompletion() {
     date_of_birth: patient.date_of_birth
       ? String(patient.date_of_birth).slice(0, 10)
       : "",
-    patient_status: patient.patient_status || "active",
   });
-  fillProfileForm(profileForm, readDraft(loginProfileDraftKey));
+  const identityLocked = Boolean(profileData.identityLocked);
+  fillProfileForm(
+    profileForm,
+    readDraft(loginProfileDraftKey),
+    identityLocked
+      ? LOGIN_PROFILE_LOCKED_IDENTITY_FIELDS
+      : LOGIN_PROFILE_NAME_FIELDS,
+  );
+  setLoginProfileIdentityLock(profileForm, identityLocked);
   setFormMessage(
     profileMessage,
     "Your entries are saved automatically on this device.",

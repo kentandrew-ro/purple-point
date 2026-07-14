@@ -4,6 +4,7 @@ const ROLE_TABS = Object.freeze({
     "view-appointments",
     "set-schedules",
     "patient-info",
+    "patient-status",
     "dental-records",
     "billing",
     "audit-logs",
@@ -13,6 +14,7 @@ const ROLE_TABS = Object.freeze({
     "dashboard",
     "view-appointments",
     "patient-info",
+    "patient-status",
     "dental-records",
     "audit-logs",
   ]),
@@ -20,6 +22,7 @@ const ROLE_TABS = Object.freeze({
     "dashboard",
     "view-appointments",
     "set-schedules",
+    "patient-status",
     "billing",
     "audit-logs",
   ]),
@@ -177,12 +180,6 @@ async function signOut() {
 
 initializeRoleInterface();
 
-const STATUS_COLORS = {
-  completed: "#bbdefb",
-  scheduled: "#e1bee7",
-  cancelled: "#ffcdd2",
-};
-
 function apptParseDateOnly(dateVal) {
   if (!dateVal) return null;
   const iso =
@@ -286,10 +283,19 @@ function renderAdminCalendar(appointments, container, baseDate) {
         const name =
           `${first ? first[0].toUpperCase() + "." : ""} ${last}`.trim();
         const time = apptFormatTime(appt.appointment_time);
-        const status = (appt.appointment_status || "").toLowerCase();
+        const rawStatus = String(
+          appt.appointment_status || "",
+        ).toLowerCase();
+        const status = ["scheduled", "completed", "cancelled"].includes(
+          rawStatus,
+        )
+          ? rawStatus
+          : "scheduled";
 
         const tag = document.createElement("div");
-        tag.style.cssText = `font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:${STATUS_COLORS[status] || "#f0f0f0"};border-radius:3px;padding:2px 5px;cursor:pointer;`;
+        tag.className = `appointment-calendar-event appointment-calendar-event--${status}`;
+        tag.style.cssText =
+          "font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:3px;padding:2px 5px;cursor:pointer;";
         tag.title = `${name} — ${time} — ${status} (click to update status)`;
         tag.textContent = `${name} — ${time}`;
         tag.addEventListener("click", () => {
@@ -690,6 +696,110 @@ async function searchPatientInfo(query) {
   } catch (err) {
     console.error(err);
     renderPatientInfoSuggestions([]);
+  }
+}
+
+async function searchPatientStatus(query) {
+  const suggestions = document.getElementById("patient-status-suggestions");
+  if (!suggestions) return;
+  if (!query || query.trim().length < 1) {
+    suggestions.innerHTML = "";
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `/api/patients/search?q=${encodeURIComponent(query)}`,
+    );
+    if (!response.ok) throw new Error("Search failed");
+    const patients = await response.json();
+    suggestions.innerHTML = patients.length
+      ? patients
+          .map(
+            (patient) => `
+              <button type="button" class="suggestion-item patient-status-option"
+                data-patient-id="${escapeHtml(patient.patient_id)}"
+                data-patient-name="${escapeHtml(`${patient.first_name || ""} ${patient.last_name || ""}`.trim())}"
+                style="display:block;width:100%;text-align:left;border:0;border-radius:0;background:#fff;color:inherit;box-shadow:none;transform:none;">
+                ${escapeHtml(`${patient.first_name || ""} ${patient.last_name || ""}`.trim())}
+                <small style="display:block;color:#777;">${escapeHtml(patient.email || patient.contact_number || "")}</small>
+              </button>`,
+          )
+          .join("")
+      : '<div style="padding:10px;color:#666;">No patients found.</div>';
+  } catch (error) {
+    console.error(error);
+    suggestions.innerHTML =
+      '<div style="padding:10px;color:#b42318;">Unable to search patients.</div>';
+  }
+}
+
+async function loadPatientStatus(patientId) {
+  const editor = document.getElementById("patient-status-editor");
+  const message = document.getElementById("patient-status-message");
+  if (!editor || !message) return;
+  editor.style.display = "none";
+  message.textContent = "Loading patient status...";
+  message.classList.remove("error", "success");
+
+  try {
+    const response = await fetch(
+      `/api/patients/${encodeURIComponent(patientId)}/status`,
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Unable to load patient status.");
+    }
+
+    document.getElementById("patient-status-id").value =
+      data.patient.patient_id;
+    document.getElementById("patient-status-name").textContent =
+      data.patient.patient_name;
+    document.getElementById("patient-status-value").value =
+      data.patient.patient_status || "active";
+    editor.style.display = "block";
+    message.textContent = data.patient.patient_records_id
+      ? ""
+      : "This patient must complete their profile before status can be changed.";
+    if (!data.patient.patient_records_id) message.classList.add("error");
+    document.getElementById("patient-status-save").disabled =
+      !data.patient.patient_records_id;
+  } catch (error) {
+    message.textContent = error.message;
+    message.classList.add("error");
+  }
+}
+
+async function savePatientStatus() {
+  const patientId = document.getElementById("patient-status-id")?.value;
+  const patientStatus = document.getElementById("patient-status-value")?.value;
+  const button = document.getElementById("patient-status-save");
+  const message = document.getElementById("patient-status-message");
+  if (!patientId || !patientStatus || !button || !message) return;
+
+  button.disabled = true;
+  message.textContent = "Saving status...";
+  message.classList.remove("error", "success");
+  try {
+    const response = await fetch(
+      `/api/patients/${encodeURIComponent(patientId)}/status`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patient_status: patientStatus }),
+      },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Unable to update patient status.");
+    }
+    message.textContent = "Patient status updated successfully.";
+    message.classList.add("success");
+  } catch (error) {
+    message.textContent = error.message;
+    message.classList.add("error");
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -1141,6 +1251,29 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  const patientStatusSearch = document.getElementById("patient-status-search");
+  const patientStatusSuggestions = document.getElementById(
+    "patient-status-suggestions",
+  );
+  if (patientStatusSearch) {
+    patientStatusSearch.addEventListener(
+      "input",
+      debounce((event) => searchPatientStatus(event.target.value || ""), 200),
+    );
+  }
+  if (patientStatusSuggestions) {
+    patientStatusSuggestions.addEventListener("click", async (event) => {
+      const option = event.target.closest(".patient-status-option");
+      if (!option) return;
+      patientStatusSearch.value = option.dataset.patientName || "";
+      patientStatusSuggestions.innerHTML = "";
+      await loadPatientStatus(option.dataset.patientId);
+    });
+  }
+  document
+    .getElementById("patient-status-save")
+    ?.addEventListener("click", savePatientStatus);
+
   const clinicDentistSearch = document.getElementById("clinic-dentist-search");
   const clinicDentistSuggestions = document.getElementById(
     "clinic-dentist-suggestions",
@@ -1193,6 +1326,15 @@ document.addEventListener("DOMContentLoaded", () => {
       !event.target.closest("#patient-info-suggestions")
     ) {
       clearPatientInfoSuggestions();
+    }
+    if (
+      !event.target.closest("#patient-status-search") &&
+      !event.target.closest("#patient-status-suggestions")
+    ) {
+      const suggestions = document.getElementById(
+        "patient-status-suggestions",
+      );
+      if (suggestions) suggestions.innerHTML = "";
     }
     if (
       !event.target.closest("#dental-patient-search") &&

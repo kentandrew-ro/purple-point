@@ -10,6 +10,7 @@ const {
 const {
   APPOINTMENT_STATUSES,
   APPOINTMENT_TYPES,
+  doctorMatchesAppointmentType,
   isIsoDate,
   parsePositiveInteger,
 } = require("../lib/businessRules");
@@ -208,18 +209,30 @@ function registerAppointmentRoutes(app) {
         });
       }
 
+      if (!APPOINTMENT_TYPES.includes(appointment_type)) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Invalid appointment_type." });
+      }
+
       const [dentists] = await pool.execute(
-        "SELECT dentist_id FROM dentist WHERE dentist_id = ?",
+        "SELECT dentist_id, specialization FROM dentist WHERE dentist_id = ?",
         [dentist_id],
       );
       if (!dentists.length) {
         return res.status(404).json({ ok: false, error: "Dentist not found." });
       }
-
-      if (!APPOINTMENT_TYPES.includes(appointment_type)) {
-        return res
-          .status(400)
-          .json({ ok: false, error: "Invalid appointment_type." });
+      if (
+        !doctorMatchesAppointmentType(
+          appointment_type,
+          dentists[0].specialization,
+        )
+      ) {
+        return res.status(409).json({
+          ok: false,
+          error:
+            "The selected doctor's specialization does not match this appointment type.",
+        });
       }
 
       if (!APPOINTMENT_STATUSES.includes(appointment_status)) {

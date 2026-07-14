@@ -14,8 +14,16 @@ const PROFILE_AUTOSAVE_FIELDS = [
   "blood_type",
   "emergency_contact_name",
   "emergency_contact_number",
-  "patient_status",
 ];
+
+const PROFILE_NAME_FIELDS = new Set(["first_name", "last_name"]);
+const PROFILE_LOCKED_IDENTITY_FIELDS = new Set([
+  "first_name",
+  "last_name",
+  "date_of_birth",
+  "gender",
+  "blood_type",
+]);
 
 let profileDraftKey = null;
 
@@ -28,12 +36,29 @@ function readProfileDraft() {
   }
 }
 
-function fillProfileFields(form, values) {
+function fillProfileFields(form, values, excludedFields = new Set()) {
   PROFILE_AUTOSAVE_FIELDS.forEach((name) => {
+    if (excludedFields.has(name)) return;
     const field = form.elements[name];
     if (field && values[name] !== null && values[name] !== undefined) {
       field.value = values[name];
     }
+  });
+}
+
+function setProfileIdentityLock(form, identityLocked) {
+  form.elements.first_name.readOnly = true;
+  form.elements.last_name.readOnly = true;
+  form.elements.date_of_birth.readOnly = identityLocked;
+  form.elements.gender.disabled = identityLocked;
+  form.elements.blood_type.disabled = identityLocked;
+
+  ["date_of_birth", "gender", "blood_type"].forEach((name) => {
+    const field = form.elements[name];
+    field.setAttribute("aria-disabled", String(identityLocked));
+    field.title = identityLocked
+      ? "This information is locked after profile creation."
+      : "This information will be locked after the profile is created.";
   });
 }
 
@@ -72,7 +97,6 @@ async function submitPatientForm(e) {
     blood_type: form.blood_type.value || "",
     emergency_contact_name: form.emergency_contact_name.value || "",
     emergency_contact_number: form.emergency_contact_number.value || "",
-    patient_status: form.patient_status.value || "active",
   };
 
   const submitBtn = form.querySelector('button[type="submit"]');
@@ -118,12 +142,13 @@ async function prefillForm(form) {
         date_of_birth: p.date_of_birth
           ? String(p.date_of_birth).slice(0, 10)
           : "",
-        patient_status: p.patient_status || "active",
       });
+      return Boolean(data.identityLocked);
     }
   } catch (err) {
     console.log("No existing profile data.");
   }
+  return false;
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -137,8 +162,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     } catch {}
 
-    await prefillForm(form);
-    fillProfileFields(form, readProfileDraft());
+    const identityLocked = await prefillForm(form);
+    fillProfileFields(
+      form,
+      readProfileDraft(),
+      identityLocked ? PROFILE_LOCKED_IDENTITY_FIELDS : PROFILE_NAME_FIELDS,
+    );
+    setProfileIdentityLock(form, identityLocked);
     form.addEventListener("submit", submitPatientForm);
     form.addEventListener("input", () => autosaveProfileDraft(form));
     form.addEventListener("change", () => autosaveProfileDraft(form));

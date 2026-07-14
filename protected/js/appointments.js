@@ -309,9 +309,18 @@ function renderAppointmentsCalendar(
 
     if (items.length) {
       items.slice(0, 4).forEach((appt) => {
+        const rawStatus = String(
+          appt.appointment_status || "",
+        ).toLowerCase();
+        const status = ["scheduled", "completed", "cancelled"].includes(
+          rawStatus,
+        )
+          ? rawStatus
+          : "scheduled";
         const tag = document.createElement("div");
+        tag.className = `appointment-calendar-event appointment-calendar-event--${status}`;
         tag.style.cssText =
-          "font-size:11px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#e8f0fe;border-radius:3px;padding:2px 4px;";
+          "font-size:11px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:3px;padding:2px 4px;";
         tag.textContent = formatAppointmentLabel(appt);
         list.appendChild(tag);
       });
@@ -342,13 +351,14 @@ async function loadAppointments() {
   return response.json();
 }
 
-async function loadDentists(dateTimeValue) {
+async function loadDentists(dateTimeValue, appointmentType) {
   const dateParts = parseAppointmentDateTime(dateTimeValue);
-  if (!dateParts) return [];
+  if (!dateParts || !appointmentType) return [];
 
   const params = new URLSearchParams({
     appointment_date: dateParts.appointment_date,
     appointment_time: dateParts.appointment_time,
+    appointment_type: appointmentType,
   });
   const response = await fetch(`/api/dentists?${params.toString()}`);
   if (!response.ok) {
@@ -362,10 +372,16 @@ async function populateDentistDropdown() {
   const form = document.getElementById("add-appointment-form");
   const select = form?.elements?.dentist_id;
   const dateTimeValue = form?.elements?.appointment_date?.value || "";
+  const appointmentType = form?.elements?.appointment_type?.value || "";
   if (!select) return;
 
-  if (!dateTimeValue) {
-    select.innerHTML = '<option value="">Choose a date and time first</option>';
+  if (!dateTimeValue || !appointmentType) {
+    const instruction = !dateTimeValue && !appointmentType
+      ? "Choose an appointment type and date/time first"
+      : !appointmentType
+        ? "Choose an appointment type first"
+        : "Choose a date and time first";
+    select.innerHTML = `<option value="">${instruction}</option>`;
     select.disabled = true;
     return;
   }
@@ -375,11 +391,16 @@ async function populateDentistDropdown() {
   select.innerHTML = '<option value="">Loading available doctors...</option>';
 
   try {
-    const dentists = await loadDentists(dateTimeValue);
-    if (form.elements.appointment_date.value !== dateTimeValue) return;
+    const dentists = await loadDentists(dateTimeValue, appointmentType);
+    if (
+      form.elements.appointment_date.value !== dateTimeValue ||
+      form.elements.appointment_type.value !== appointmentType
+    ) {
+      return;
+    }
     select.innerHTML = dentists.length
       ? '<option value="">Select an available doctor</option>'
-      : '<option value="">No doctors available at this time</option>';
+      : '<option value="">No available doctors match this type and time</option>';
     dentists.forEach((dentist) => {
       const option = document.createElement("option");
       option.value = dentist.dentist_id;
@@ -582,7 +603,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     addForm.addEventListener("change", (event) => {
       autosaveAppointmentDraft(addForm);
-      if (event.target?.name === "appointment_date") {
+      if (
+        event.target?.name === "appointment_date" ||
+        event.target?.name === "appointment_type"
+      ) {
         populateDentistDropdown();
       }
     });

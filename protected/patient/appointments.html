@@ -116,6 +116,32 @@
             <h2>Your Appointments</h2>
             <p>Review your current and previous bookings.</p>
           </header>
+          <div
+            class="appointment-status-legend"
+            aria-label="Appointment status colors"
+          >
+            <span class="appointment-status-legend__item"
+              ><span
+                class="appointment-status-legend__swatch appointment-calendar-event--scheduled"
+                aria-hidden="true"
+              ></span
+              >Scheduled</span
+            >
+            <span class="appointment-status-legend__item"
+              ><span
+                class="appointment-status-legend__swatch appointment-calendar-event--completed"
+                aria-hidden="true"
+              ></span
+              >Completed</span
+            >
+            <span class="appointment-status-legend__item"
+              ><span
+                class="appointment-status-legend__swatch appointment-calendar-event--cancelled"
+                aria-hidden="true"
+              ></span
+              >Cancelled</span
+            >
+          </div>
           <div id="view-appointment-result" class="card"></div>
         </div>
 
@@ -174,6 +200,7 @@
         </div>
       </div>
     </main>
+    <script src="/public_js/requiredFields.js"></script>
     <script src="/public_js/currentUser.js"></script>
     <script src="/js/appointments.js"></script>
   </body>

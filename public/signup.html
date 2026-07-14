@@ -27,7 +27,7 @@
       <div class="auth-card">
         <h1>Create an account</h1>
         <p>Register as a PurplePoint patient.</p>
-        <form action="" method="post">
+        <form id="signup-form" novalidate>
           <div class="form-grid">
             <div class="field-group">
               <label for="firstName">First name</label
@@ -71,8 +71,13 @@
               name="email"
               placeholder="name@example.com"
               autocomplete="email"
+              pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}"
+              aria-describedby="email-requirement"
               required
             />
+            <small id="email-requirement" class="form-hint"
+              >Use a complete address such as name@example.com.</small
+            >
           </div>
           <div class="field-group">
             <label for="password">Password</label
@@ -82,8 +87,14 @@
               name="password"
               placeholder="Create a strong password"
               autocomplete="new-password"
+              minlength="8"
+              aria-describedby="password-requirement"
               required
             />
+            <small id="password-requirement" class="form-hint"
+              >At least 8 characters, including one uppercase letter and one
+              special character.</small
+            >
           </div>
           <div class="field-group">
             <label for="contactNumber">Contact number</label
@@ -97,15 +108,17 @@
             />
           </div>
           <div class="auth-actions">
-            <button type="button" id="signUpSubmit">Create Account</button
+            <button type="submit" id="signUpSubmit">Create Account</button
             ><a class="button button-secondary" href="/login.html"
               >Back to Sign In</a
             >
           </div>
+          <p id="signup-message" class="form-message" aria-live="polite"></p>
         </form>
       </div>
     </main>
 
+    <script src="/public_js/requiredFields.js"></script>
     <script src="public_js/signup.js"></script>
   </body>
 </html>

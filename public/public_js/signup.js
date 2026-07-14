@@ -1,12 +1,43 @@
-document.getElementById("signUpSubmit").addEventListener("click", async () => {
-  const firstName = document.querySelector('input[name="firstName"]').value;
-  const lastName = document.querySelector('input[name="lastName"]').value;
-  const username = document.querySelector('input[name="username"]').value;
-  const email = document.querySelector('input[name="email"]').value;
-  const password = document.querySelector('input[name="password"]').value;
-  const contactNumber = document.querySelector(
-    'input[name="contactNumber"]',
-  ).value;
+"use strict";
+
+const signupForm = document.getElementById("signup-form");
+const signupButton = document.getElementById("signUpSubmit");
+const signupMessage = document.getElementById("signup-message");
+
+function showSignupMessage(message, type = "error") {
+  signupMessage.textContent = message;
+  signupMessage.classList.remove("error", "success");
+  if (message && type) signupMessage.classList.add(type);
+}
+
+function isValidSignupEmail(email) {
+  return /^[^\s@]+@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/.test(
+    email,
+  );
+}
+
+function passwordValidationError(password) {
+  if (password.length < 8) {
+    return "Password must contain at least 8 characters.";
+  }
+  if (!/[A-Z]/.test(password)) {
+    return "Password must contain at least one uppercase letter.";
+  }
+  if (!/[^A-Za-z0-9\s]/.test(password)) {
+    return "Password must contain at least one special character.";
+  }
+  return "";
+}
+
+signupForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const firstName = signupForm.elements.firstName.value.trim();
+  const lastName = signupForm.elements.lastName.value.trim();
+  const username = signupForm.elements.username.value.trim();
+  const email = signupForm.elements.email.value.trim().toLowerCase();
+  const password = signupForm.elements.password.value;
+  const contactNumber = signupForm.elements.contactNumber.value.trim();
 
   if (
     !firstName ||
@@ -16,16 +47,33 @@ document.getElementById("signUpSubmit").addEventListener("click", async () => {
     !password ||
     !contactNumber
   ) {
-    alert("Please fill in all fields.");
+    showSignupMessage("Please fill in all fields.");
     return;
   }
+
+  if (!isValidSignupEmail(email)) {
+    showSignupMessage(
+      "Enter a valid email address with @ and a domain such as .com or .ph.",
+    );
+    signupForm.elements.email.focus();
+    return;
+  }
+
+  const passwordError = passwordValidationError(password);
+  if (passwordError) {
+    showSignupMessage(passwordError);
+    signupForm.elements.password.focus();
+    return;
+  }
+
+  signupButton.disabled = true;
+  signupButton.textContent = "Creating Account...";
+  showSignupMessage("Creating your account...", "");
 
   try {
     const response = await fetch("/api/signup", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         firstName,
         lastName,
@@ -36,16 +84,23 @@ document.getElementById("signUpSubmit").addEventListener("click", async () => {
       }),
     });
 
-    const data = await response.json();
-
-    if (response.ok) {
-      alert("Success: " + data.message);
-      window.location.href = "/login.html";
-    } else {
-      alert("Error: " + data.error);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "Unable to create your account.");
     }
+
+    showSignupMessage(
+      "Account created successfully. Opening sign in...",
+      "success",
+    );
+    window.location.replace("/login.html");
   } catch (error) {
     console.error("Error during signup:", error);
-    alert("An error occurred while signing up. Check the console.");
+    showSignupMessage(error.message || "Unable to create your account.");
+  } finally {
+    signupButton.disabled = false;
+    signupButton.textContent = "Create Account";
   }
 });
+
+signupForm.addEventListener("input", () => showSignupMessage("", ""));

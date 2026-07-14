@@ -7,6 +7,8 @@ const {
   requireRole,
 } = require("../lib/http");
 const {
+  APPOINTMENT_TYPES,
+  doctorMatchesAppointmentType,
   getDoctorProfileValidationError,
   isIsoDate,
   parsePositiveInteger,
@@ -145,6 +147,105 @@ function registerDentalAdminRoutes(app) {
     }
   });
 
+  app.get("/api/patients/:id/status", async (req, res) => {
+    if (!req.session.userId)
+      return res.status(401).json({ error: "Not logged in" });
+    if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
+
+    const patientId = parseInt(req.params.id, 10);
+    if (!patientId) {
+      return res.status(400).json({ ok: false, error: "Invalid patient ID." });
+    }
+
+    try {
+      const [rows] = await pool.execute(
+        `SELECT p.patient_id,
+                CONCAT(u.first_name, ' ', u.last_name) AS patient_name,
+                pr.patient_records_id,
+                COALESCE(pr.patient_status, 'active') AS patient_status
+         FROM patients p
+         JOIN users u ON u.user_id = p.user_id
+         LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
+         WHERE p.patient_id = ?`,
+        [patientId],
+      );
+      if (!rows.length) {
+        return res.status(404).json({ ok: false, error: "Patient not found." });
+      }
+      return res.json({ ok: true, patient: rows[0] });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    }
+  });
+
+  app.patch("/api/patients/:id/status", async (req, res) => {
+    if (!req.session.userId)
+      return res.status(401).json({ error: "Not logged in" });
+    if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
+
+    const patientId = parseInt(req.params.id, 10);
+    const patientStatus = requireField(
+      req.body || {},
+      "patient_status",
+    )?.toLowerCase();
+    if (!patientId) {
+      return res.status(400).json({ ok: false, error: "Invalid patient ID." });
+    }
+    if (
+      !patientStatus ||
+      !["active", "inactive", "archived"].includes(patientStatus)
+    ) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Invalid patient status." });
+    }
+
+    try {
+      const [rows] = await pool.execute(
+        `SELECT pr.patient_records_id, pr.patient_status,
+                CONCAT(u.first_name, ' ', u.last_name) AS patient_name
+         FROM patients p
+         JOIN users u ON u.user_id = p.user_id
+         LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
+         WHERE p.patient_id = ?`,
+        [patientId],
+      );
+      if (!rows.length) {
+        return res.status(404).json({ ok: false, error: "Patient not found." });
+      }
+      if (!rows[0].patient_records_id) {
+        return res.status(409).json({
+          ok: false,
+          error:
+            "The patient must complete their profile before status can be changed.",
+        });
+      }
+
+      await pool.execute(
+        "UPDATE patient_records SET patient_status = ? WHERE patient_id = ?",
+        [patientStatus, patientId],
+      );
+      await recordAudit(req, {
+        action: "UPDATE_PATIENT_STATUS",
+        entityType: "patient",
+        entityId: patientId,
+        description: `Changed ${rows[0].patient_name} status to ${patientStatus}`,
+        oldValues: { patient_status: rows[0].patient_status },
+        newValues: { patient_status: patientStatus },
+      });
+
+      return res.json({
+        ok: true,
+        message: "Patient status updated.",
+        patient_status: patientStatus,
+      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    }
+  });
+
   app.get("/api/dentists", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
@@ -152,6 +253,23 @@ function registerDentalAdminRoutes(app) {
     try {
       const appointmentDate = requireField(req.query, "appointment_date");
       const appointmentTime = requireField(req.query, "appointment_time");
+      const appointmentType = (
+        requireField(req.query, "appointment_type") || ""
+      ).toLowerCase();
+
+      if (appointmentType && !APPOINTMENT_TYPES.includes(appointmentType)) {
+        return res.status(400).json({ error: "Invalid appointment type." });
+      }
+
+      const filterByAppointmentType = (dentists) => {
+        if (!appointmentType) return dentists;
+        return dentists.filter((dentist) =>
+          doctorMatchesAppointmentType(
+            appointmentType,
+            dentist.specialization,
+          ),
+        );
+      };
 
       if (
         (appointmentDate && !appointmentTime) ||
@@ -199,7 +317,7 @@ function registerDentalAdminRoutes(app) {
             appointmentTime,
           ],
         );
-        return res.json(availableRows);
+        return res.json(filterByAppointmentType(availableRows));
       }
 
       const [rows] = await pool.execute(
@@ -209,7 +327,7 @@ function registerDentalAdminRoutes(app) {
          JOIN users u ON u.user_id = d.user_id
          ORDER BY u.first_name, u.last_name`,
       );
-      return res.json(rows);
+      return res.json(filterByAppointmentType(rows));
     } catch (err) {
       console.error(err);
       return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
@@ -1256,7 +1374,8 @@ function registerDentalAdminRoutes(app) {
       if (user_id === req.session.userId || users[0].role !== "patient") {
         return res.status(409).json({
           ok: false,
-          error: "Only another patient account can be assigned a staff or doctor role.",
+          error:
+            "Only another patient account can be assigned a staff or doctor role.",
         });
       }
 
