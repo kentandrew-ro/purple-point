@@ -98,9 +98,17 @@ CREATE TABLE patient_records (
   patient_records_id INT AUTO_INCREMENT PRIMARY KEY,
   patient_id INT NOT NULL UNIQUE,
   date_registered DATE NOT NULL DEFAULT (CURRENT_DATE),
-  emergency_contact_name VARCHAR(150) NOT NULL,
-  emergency_contact_number VARCHAR(20) NOT NULL,
   patient_status ENUM('active', 'inactive', 'archived') NOT NULL DEFAULT 'active',
+  FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
+);
+
+CREATE TABLE emergency_contacts (
+  emergency_contact_id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL UNIQUE,
+  contact_name VARCHAR(150) NOT NULL,
+  contact_number VARCHAR(20) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
 );
 

@@ -569,7 +569,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     const meRes = await fetch("/api/me");
     if (meRes.ok) {
       currentUser = await meRes.json();
-      if (["superadmin", "staff", "admin"].includes(currentUser.role)) {
+      if (
+        ["superadmin", "staff", "doctor", "admin"].includes(currentUser.role)
+      ) {
         const field = document.getElementById("patient-id-field");
         if (field) field.style.display = "block";
         const input = field?.querySelector("input");

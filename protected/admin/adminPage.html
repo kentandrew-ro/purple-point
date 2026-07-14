@@ -163,6 +163,7 @@
                 type="text"
                 placeholder="Search patient by name, email, or contact"
                 autocomplete="off"
+                required
               />
               <input id="patient_id" name="patient_id" type="hidden" />
               <div id="patient-suggestions" class="suggestions"></div>
@@ -488,6 +489,18 @@
             class="dental-subtab-content"
             style="margin-top: 16px"
           >
+            <div id="tooth-chart-record-controls" class="field">
+              <label for="tooth-chart-record-select">
+                Appointment and Treatment Record
+              </label>
+              <select id="tooth-chart-record-select">
+                <option value="">No tooth-chart records</option>
+              </select>
+            </div>
+            <div
+              id="tooth-chart-record-summary"
+              class="tooth-chart-record-summary"
+            ></div>
             <div
               id="tooth-chart-container"
               style="
@@ -551,8 +564,19 @@
                     <input
                       id="treatment_teeth"
                       type="text"
-                      placeholder="e.g. All, Upper arch, #8"
+                      placeholder="Select teeth from the chart below"
+                      readonly
                     />
+                  </div>
+                  <div class="field treatment-tooth-picker-field">
+                    <span class="treatment-tooth-picker-label">
+                      Select Tooth(s)
+                    </span>
+                    <div id="treatment-tooth-selector"></div>
+                    <small>
+                      Click one or more teeth. The Tooth(s) field is filled
+                      automatically.
+                    </small>
                   </div>
                   <div class="field" style="position: relative">
                     <label for="treatment-dentist-search">Doctor</label>
@@ -1014,6 +1038,9 @@
                   <option value="UPDATE_DENTAL_RECORD">
                     Update dental record
                   </option>
+                  <option value="UPDATE_TOOTH_CHART">
+                    Update tooth chart
+                  </option>
                   <option value="CREATE_BILLING">Create billing</option>
                   <option value="UPDATE_BILLING">Update billing</option>
                   <option value="UPDATE_BILLING_STATUS">
@@ -1040,6 +1067,7 @@
                   <option value="dentist_schedule">Dentist schedule</option>
                   <option value="staff">Staff</option>
                   <option value="dental_record">Dental record</option>
+                  <option value="tooth_chart">Tooth chart</option>
                   <option value="billing">Billing</option>
                   <option value="payment">Payment</option>
                   <option value="user">User</option>

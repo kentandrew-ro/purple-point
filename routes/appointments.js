@@ -104,14 +104,7 @@ function registerAppointmentRoutes(app) {
       let patientProfile;
 
       const role = normalizeRole(req.session.role);
-      if (role === "doctor") {
-        return res.status(403).json({
-          ok: false,
-          error: "Doctors can view their schedule but cannot create appointments.",
-        });
-      }
-
-      if (["superadmin", "staff"].includes(role)) {
+      if (["superadmin", "staff", "doctor"].includes(role)) {
         patient_id = parseInt(body.patient_id, 10);
         if (!patient_id) {
           return res
@@ -120,10 +113,13 @@ function registerAppointmentRoutes(app) {
         }
         const [patients] = await pool.execute(
           `SELECT p.patient_id, pr.patient_records_id,
-                  pr.emergency_contact_name, pr.emergency_contact_number,
+                  ec.emergency_contact_id,
+                  ec.contact_name AS emergency_contact_name,
+                  ec.contact_number AS emergency_contact_number,
                   pr.patient_status
            FROM patients p
            LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
+           LEFT JOIN emergency_contacts ec ON ec.patient_id = p.patient_id
            WHERE p.patient_id = ?`,
           [patient_id],
         );
@@ -136,10 +132,13 @@ function registerAppointmentRoutes(app) {
       } else {
         const [rows] = await pool.execute(
           `SELECT p.patient_id, pr.patient_records_id,
-                  pr.emergency_contact_name, pr.emergency_contact_number,
+                  ec.emergency_contact_id,
+                  ec.contact_name AS emergency_contact_name,
+                  ec.contact_number AS emergency_contact_number,
                   pr.patient_status
            FROM patients p
            LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
+           LEFT JOIN emergency_contacts ec ON ec.patient_id = p.patient_id
            WHERE p.user_id = ?`,
           [req.session.userId],
         );
@@ -156,6 +155,7 @@ function registerAppointmentRoutes(app) {
 
       if (
         !patientProfile.patient_records_id ||
+        !patientProfile.emergency_contact_id ||
         !patientProfile.emergency_contact_name ||
         !patientProfile.emergency_contact_number
       ) {

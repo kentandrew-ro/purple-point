@@ -113,9 +113,10 @@ function registerAuthProfileRoutes(
             `SELECT p.patient_id
              FROM patients p
              JOIN patient_records pr ON pr.patient_id = p.patient_id
+             JOIN emergency_contacts ec ON ec.patient_id = p.patient_id
              WHERE p.user_id = ?
-               AND TRIM(pr.emergency_contact_name) <> ''
-               AND TRIM(pr.emergency_contact_number) <> ''
+               AND TRIM(ec.contact_name) <> ''
+               AND TRIM(ec.contact_number) <> ''
              LIMIT 1`,
             [user.user_id],
           );
@@ -195,13 +196,15 @@ function registerAuthProfileRoutes(
       const [rows] = await pool.execute(
         `SELECT p.*, u.first_name, u.last_name, u.contact_number, u.email,
                 DATE_FORMAT(p.date_of_birth, '%Y-%m-%d') AS date_of_birth,
-                pr.patient_records_id, pr.emergency_contact_name,
-                pr.emergency_contact_number,
+                pr.patient_records_id, ec.emergency_contact_id,
+                ec.contact_name AS emergency_contact_name,
+                ec.contact_number AS emergency_contact_number,
                 COALESCE(pr.patient_status, 'active') AS patient_status,
                 DATE_FORMAT(pr.date_registered, '%Y-%m-%d') AS date_registered
          FROM users u
          LEFT JOIN patients p ON p.user_id = u.user_id
          LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
+         LEFT JOIN emergency_contacts ec ON ec.patient_id = p.patient_id
          WHERE u.user_id = ?`,
         [req.session.userId],
       );
@@ -216,6 +219,7 @@ function registerAuthProfileRoutes(
         profileComplete: Boolean(
           rows[0].patient_id &&
           rows[0].patient_records_id &&
+          rows[0].emergency_contact_id &&
           rows[0].emergency_contact_name &&
           rows[0].emergency_contact_number,
         ),
@@ -388,19 +392,21 @@ function registerAuthProfileRoutes(
       }
 
       await conn.execute(
-        `INSERT INTO patient_records
-           (patient_id, emergency_contact_name, emergency_contact_number, patient_status)
-         VALUES (?, ?, ?, ?)
+        `INSERT INTO patient_records (patient_id, patient_status)
+         VALUES (?, ?)
          ON DUPLICATE KEY UPDATE
-           emergency_contact_name = VALUES(emergency_contact_name),
-           emergency_contact_number = VALUES(emergency_contact_number),
            patient_status = VALUES(patient_status)`,
-        [
-          patientId,
-          emergency_contact_name,
-          emergency_contact_number,
-          normalizedPatientStatus,
-        ],
+        [patientId, normalizedPatientStatus],
+      );
+
+      await conn.execute(
+        `INSERT INTO emergency_contacts
+           (patient_id, contact_name, contact_number)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           contact_name = VALUES(contact_name),
+           contact_number = VALUES(contact_number)`,
+        [patientId, emergency_contact_name, emergency_contact_number],
       );
 
       await createAuditLog(conn, req, {

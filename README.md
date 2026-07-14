@@ -31,3 +31,12 @@ For an existing database created with the old `patient`/`admin` roles, run
 legacy administrator as the superadmin and converts other linked doctor/staff
 accounts to their restricted roles. New databases created from `database.sql`
 already use `patient`, `superadmin`, `doctor`, and `staff` roles.
+
+## Emergency contact migration
+
+For an existing database that still stores emergency-contact details in
+`patient_records`, run `emergency_contacts_migration.sql` once **before**
+running `make migrate` or starting this version. The migration creates the new
+table, copies all existing contact details, and then removes the old columns.
+New databases created from `database.sql` already use the separate
+`emergency_contacts` table and do not need this migration.
