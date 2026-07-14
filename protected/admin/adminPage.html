@@ -460,6 +460,14 @@
             </button>
           </div>
 
+          <div
+            id="dental-medical-alerts"
+            class="dental-medical-alerts"
+            hidden
+            role="status"
+            aria-live="polite"
+          ></div>
+
           <div class="row" style="margin-top: 16px; gap: 8px">
             <button
               type="button"
@@ -697,14 +705,6 @@
                       placeholder="e.g. 36.5°C"
                     />
                   </div>
-                  <div class="field">
-                    <label for="vitals_weight">Weight (kg)</label>
-                    <input
-                      id="vitals_weight"
-                      type="text"
-                      placeholder="e.g. 58 kg"
-                    />
-                  </div>
                 </div>
                 <div class="actions">
                   <button type="submit">Save Vitals</button>
@@ -722,12 +722,11 @@
                   <th>Blood Pressure</th>
                   <th>Pulse</th>
                   <th>Temperature</th>
-                  <th>Weight</th>
                 </tr>
               </thead>
               <tbody id="vitals-body">
                 <tr>
-                  <td colspan="6">No patient selected.</td>
+                  <td colspan="5">No patient selected.</td>
                 </tr>
               </tbody>
             </table>

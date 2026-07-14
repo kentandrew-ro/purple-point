@@ -14,6 +14,8 @@ const PROFILE_AUTOSAVE_FIELDS = [
   "blood_type",
   "emergency_contact_name",
   "emergency_contact_number",
+  "diabetes_status",
+  "allergies",
 ];
 
 const PROFILE_NAME_FIELDS = new Set(["first_name", "last_name"]);
@@ -97,6 +99,8 @@ async function submitPatientForm(e) {
     blood_type: form.blood_type.value || "",
     emergency_contact_name: form.emergency_contact_name.value || "",
     emergency_contact_number: form.emergency_contact_number.value || "",
+    diabetes_status: form.diabetes_status.value || "unknown",
+    allergies: form.allergies.value || "",
   };
 
   const submitBtn = form.querySelector('button[type="submit"]');
@@ -142,6 +146,7 @@ async function prefillForm(form) {
         date_of_birth: p.date_of_birth
           ? String(p.date_of_birth).slice(0, 10)
           : "",
+        allergies: Array.isArray(p.allergies) ? p.allergies.join("\n") : "",
       });
       return Boolean(data.identityLocked);
     }

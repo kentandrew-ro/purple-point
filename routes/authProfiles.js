@@ -16,6 +16,12 @@ const {
   validateGender,
 } = require("../lib/businessRules");
 const { createAuditLog, recordAudit } = require("../lib/audit");
+const {
+  getAllergyValidationError,
+  normalizeAllergies,
+  normalizeDiabetesStatus,
+  replacePatientAllergies,
+} = require("../lib/medicalProfile");
 
 function registerAuthProfileRoutes(
   app,
@@ -199,18 +205,32 @@ function registerAuthProfileRoutes(
                 pr.patient_records_id, ec.emergency_contact_id,
                 ec.contact_name AS emergency_contact_name,
                 ec.contact_number AS emergency_contact_number,
+                COALESCE(pmp.diabetes_status, 'unknown') AS diabetes_status,
                 COALESCE(pr.patient_status, 'active') AS patient_status,
                 DATE_FORMAT(pr.date_registered, '%Y-%m-%d') AS date_registered
          FROM users u
          LEFT JOIN patients p ON p.user_id = u.user_id
          LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
          LEFT JOIN emergency_contacts ec ON ec.patient_id = p.patient_id
+         LEFT JOIN patient_medical_profiles pmp ON pmp.patient_id = p.patient_id
          WHERE u.user_id = ?`,
         [req.session.userId],
       );
 
       if (!rows.length) {
         return res.status(404).json({ ok: false, error: "User not found" });
+      }
+
+      let allergies = [];
+      if (rows[0].patient_id) {
+        const [allergyRows] = await pool.execute(
+          `SELECT allergen
+           FROM patient_allergies
+           WHERE patient_id = ?
+           ORDER BY allergen`,
+          [rows[0].patient_id],
+        );
+        allergies = allergyRows.map((row) => row.allergen);
       }
 
       return res.json({
@@ -223,7 +243,7 @@ function registerAuthProfileRoutes(
           rows[0].emergency_contact_name &&
           rows[0].emergency_contact_number,
         ),
-        patient: rows[0],
+        patient: { ...rows[0], allergies },
       });
     } catch (err) {
       console.error(err);
@@ -264,6 +284,20 @@ function registerAuthProfileRoutes(
         body,
         "emergency_contact_number",
       );
+      const diabetes_status = normalizeDiabetesStatus(
+        requireField(body, "diabetes_status"),
+      );
+      const allergies = normalizeAllergies(body.allergies);
+      const allergyError = getAllergyValidationError(allergies);
+      if (!diabetes_status) {
+        return res.status(400).json({
+          ok: false,
+          error: "Diabetes status must be unknown, no, or yes.",
+        });
+      }
+      if (allergyError) {
+        return res.status(400).json({ ok: false, error: allergyError });
+      }
       const [identityRows] = await conn.execute(
         `SELECT u.first_name, u.last_name, p.patient_id,
                 DATE_FORMAT(p.date_of_birth, '%Y-%m-%d') AS date_of_birth,
@@ -409,6 +443,15 @@ function registerAuthProfileRoutes(
         [patientId, emergency_contact_name, emergency_contact_number],
       );
 
+      await conn.execute(
+        `INSERT INTO patient_medical_profiles (patient_id, diabetes_status)
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE
+           diabetes_status = VALUES(diabetes_status)`,
+        [patientId, diabetes_status],
+      );
+      await replacePatientAllergies(conn, patientId, allergies);
+
       await createAuditLog(conn, req, {
         action: "UPDATE_PATIENT",
         entityType: "patient",
@@ -425,6 +468,8 @@ function registerAuthProfileRoutes(
           blood_type,
           emergency_contact_name,
           emergency_contact_number,
+          diabetes_status,
+          allergies,
           patient_status: normalizedPatientStatus,
         },
       });

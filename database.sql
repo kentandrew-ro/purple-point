@@ -112,6 +112,28 @@ CREATE TABLE emergency_contacts (
   FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
 );
 
+CREATE TABLE patient_medical_profiles (
+  patient_id INT PRIMARY KEY,
+  diabetes_status ENUM('unknown', 'no', 'yes') NOT NULL DEFAULT 'unknown',
+  medical_notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
+);
+
+CREATE TABLE patient_allergies (
+  patient_allergy_id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL,
+  allergen VARCHAR(150) NOT NULL,
+  reaction VARCHAR(255),
+  severity ENUM('mild', 'moderate', 'severe'),
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_patient_allergy (patient_id, allergen),
+  FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
+);
+
 CREATE TABLE patient_vitals (
   patient_vitals_id INT AUTO_INCREMENT PRIMARY KEY,
   dental_record_id INT NOT NULL,
@@ -119,7 +141,6 @@ CREATE TABLE patient_vitals (
   blood_pressure VARCHAR(20),
   heart_rate INT,
   temperature DECIMAL(4,1),
-  weight DECIMAL(5,2),
   date_recorded DATE NOT NULL,
   FOREIGN KEY (dental_record_id) REFERENCES dental_records(dental_record_id) ON DELETE CASCADE,
   FOREIGN KEY (staff_id) REFERENCES users(user_id)

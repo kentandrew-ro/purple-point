@@ -14,6 +14,8 @@ const PROFILE_DRAFT_FIELDS = [
   "blood_type",
   "emergency_contact_name",
   "emergency_contact_number",
+  "diabetes_status",
+  "allergies",
 ];
 
 const LOGIN_PROFILE_NAME_FIELDS = new Set(["first_name", "last_name"]);
@@ -122,6 +124,9 @@ async function showProfileCompletion() {
     contact_number: patient.contact_number || me.contactNumber || "",
     date_of_birth: patient.date_of_birth
       ? String(patient.date_of_birth).slice(0, 10)
+      : "",
+    allergies: Array.isArray(patient.allergies)
+      ? patient.allergies.join("\n")
       : "",
   });
   const identityLocked = Boolean(profileData.identityLocked);

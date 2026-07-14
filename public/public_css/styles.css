@@ -451,6 +451,32 @@ button.forgot-password-button:hover {
   box-shadow: var(--shadow);
 }
 
+.dental-medical-alerts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.dental-medical-alerts[hidden] {
+  display: none;
+}
+
+.dental-medical-alert {
+  border: 1px solid #d8a63d;
+  border-radius: 8px;
+  background: #fff8e7;
+  color: #704c00;
+  padding: 9px 12px;
+  font-size: 14px;
+}
+
+.dental-medical-alert.is-urgent {
+  border-color: #d65a5a;
+  background: #fff0f0;
+  color: #8a1f1f;
+}
+
 .form-card {
   width: min(850px, 100%);
   margin: 0 auto;

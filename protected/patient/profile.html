@@ -102,6 +102,30 @@
               First and last name cannot be edited here. Date of birth, gender,
               and blood type are locked after the profile is created.
             </p>
+            <h3 style="margin: 12px 0 0">Medical Information</h3>
+            <div class="form-grid">
+              <div class="field-group">
+                <label for="profile-diabetes-status">Diabetic status</label>
+                <select
+                  id="profile-diabetes-status"
+                  name="diabetes_status"
+                  required
+                >
+                  <option value="unknown">Unknown</option>
+                  <option value="no">No</option>
+                  <option value="yes">Yes</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label for="profile-allergies">Allergies</label>
+                <textarea
+                  id="profile-allergies"
+                  name="allergies"
+                  maxlength="7600"
+                  placeholder="Enter one allergy per line, or leave blank if none are known"
+                ></textarea>
+              </div>
+            </div>
             <h3 style="margin: 12px 0 0">Address</h3>
             <div class="form-grid">
               <div class="field-group">

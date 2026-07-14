@@ -694,6 +694,18 @@ function renderPatientInfoDetails(patient) {
           <label for="patient-edit-emergency-number">Emergency contact number</label>
           <input id="patient-edit-emergency-number" name="emergency_contact_number" type="tel" maxlength="20" value="${escapeHtml(patient.emergency_contact_number || "")}" required />
         </div>
+        <div class="field">
+          <label for="patient-edit-diabetes-status">Diabetic status</label>
+          <select id="patient-edit-diabetes-status" name="diabetes_status" required>
+            <option value="unknown" ${patient.diabetes_status === "unknown" ? "selected" : ""}>Unknown</option>
+            <option value="no" ${patient.diabetes_status === "no" ? "selected" : ""}>No</option>
+            <option value="yes" ${patient.diabetes_status === "yes" ? "selected" : ""}>Yes</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="patient-edit-allergies">Allergies</label>
+          <textarea id="patient-edit-allergies" name="allergies" maxlength="7600" placeholder="Enter one allergy per line, or leave blank if none are known">${escapeHtml(Array.isArray(patient.allergies) ? patient.allergies.join("\n") : "")}</textarea>
+        </div>
       </div>
 
       <p>
@@ -1923,7 +1935,7 @@ function renderVitalsTable(vitals) {
   const tbody = document.getElementById("vitals-body");
   if (!tbody) return;
   if (!vitals || !vitals.length) {
-    tbody.innerHTML = "<tr><td colspan='6'>No vitals recorded.</td></tr>";
+    tbody.innerHTML = "<tr><td colspan='5'>No vitals recorded.</td></tr>";
     return;
   }
   tbody.innerHTML = vitals
@@ -1935,7 +1947,6 @@ function renderVitalsTable(vitals) {
         <td>${escapeHtml(v.bp)}</td>
         <td>${escapeHtml(v.pulse)}</td>
         <td>${escapeHtml(v.temp)}</td>
-        <td>${escapeHtml(v.weight)}</td>
       </tr>`,
     )
     .join("");
@@ -1953,6 +1964,47 @@ function showDentalSubtab(name) {
     btn.style.fontWeight = isActive ? "bold" : "normal";
     btn.style.textDecoration = isActive ? "underline" : "none";
   });
+}
+
+function renderDentalMedicalAlerts(patient) {
+  const container = document.getElementById("dental-medical-alerts");
+  if (!container) return;
+
+  const alerts = [];
+  if (patient.diabetes_status === "yes") {
+    alerts.push({ label: "Diabetes", value: "Patient is diabetic", urgent: true });
+  } else if (patient.diabetes_status === "unknown") {
+    alerts.push({
+      label: "Diabetes",
+      value: "Status has not been confirmed",
+      urgent: false,
+    });
+  }
+
+  const allergies = Array.isArray(patient.allergies)
+    ? patient.allergies.filter(Boolean)
+    : [];
+  if (allergies.length) {
+    alerts.push({
+      label: "Allergies",
+      value: allergies.join(", "),
+      urgent: true,
+    });
+  }
+
+  container.replaceChildren();
+  alerts.forEach((alert) => {
+    const item = document.createElement("div");
+    item.className = `dental-medical-alert${alert.urgent ? " is-urgent" : ""}`;
+
+    const label = document.createElement("strong");
+    label.textContent = `${alert.label}: `;
+    const value = document.createElement("span");
+    value.textContent = alert.value;
+    item.append(label, value);
+    container.appendChild(item);
+  });
+  container.hidden = alerts.length === 0;
 }
 
 async function loadDentalPatientRecord(patientId) {
@@ -1975,6 +2027,7 @@ async function loadDentalPatientRecord(patientId) {
       data.patient.name;
     document.getElementById("dental-patient-meta").textContent =
       `P-${String(data.patient.patient_id).padStart(3, "0")} | ${data.patient.blood_type} | ${formatDentalDate(data.patient.date_of_birth)} | ${data.patient.status.charAt(0).toUpperCase() + data.patient.status.slice(1)}`;
+    renderDentalMedicalAlerts(data.patient);
 
     renderToothChartRecords(data.tooth_charts || []);
     renderToothChartLegend(document.getElementById("tooth-chart-legend"));
@@ -2366,7 +2419,6 @@ function initDentalRecordsTab() {
         blood_pressure: document.getElementById("vitals_bp").value,
         heart_rate: document.getElementById("vitals_pulse").value,
         temperature: document.getElementById("vitals_temp").value,
-        weight: document.getElementById("vitals_weight").value,
       };
 
       try {

@@ -40,3 +40,11 @@ running `make migrate` or starting this version. The migration creates the new
 table, copies all existing contact details, and then removes the old columns.
 New databases created from `database.sql` already use the separate
 `emergency_contacts` table and do not need this migration.
+
+## Medical profile migration
+
+For an existing database, run `medical_profile_migration.sql` once before
+running `make migrate` or starting this version. It creates the patient medical
+profile and allergy tables, initializes existing patients with an unknown
+diabetes status, and removes weight from `patient_vitals`. New databases
+created from `database.sql` do not need this migration.

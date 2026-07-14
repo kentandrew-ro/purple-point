@@ -16,6 +16,12 @@ const {
   validateGender,
 } = require("../lib/businessRules");
 const { createAuditLog, recordAudit } = require("../lib/audit");
+const {
+  getAllergyValidationError,
+  normalizeAllergies,
+  normalizeDiabetesStatus,
+  replacePatientAllergies,
+} = require("../lib/medicalProfile");
 
 async function getToothChartTreatmentValue(executor, dentalRecordId) {
   const [rows] = await executor.execute(
@@ -149,11 +155,13 @@ function registerDentalAdminRoutes(app) {
            DATE_FORMAT(pr.date_registered, '%Y-%m-%d') AS date_registered,
            ec.contact_name AS emergency_contact_name,
            ec.contact_number AS emergency_contact_number,
+           COALESCE(pmp.diabetes_status, 'unknown') AS diabetes_status,
            COALESCE(pr.patient_status, 'active') AS patient_status
          FROM patients p
          LEFT JOIN users u ON u.user_id = p.user_id
          LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
          LEFT JOIN emergency_contacts ec ON ec.patient_id = p.patient_id
+         LEFT JOIN patient_medical_profiles pmp ON pmp.patient_id = p.patient_id
          WHERE p.patient_id = ?`,
         [patientId],
       );
@@ -166,12 +174,20 @@ function registerDentalAdminRoutes(app) {
         "SELECT COUNT(*) AS appointment_count FROM appointments WHERE patient_id = ?",
         [patientId],
       );
+      const [allergyRows] = await pool.execute(
+        `SELECT allergen
+         FROM patient_allergies
+         WHERE patient_id = ?
+         ORDER BY allergen`,
+        [patientId],
+      );
 
       return res.json({
         ok: true,
         patient: {
           ...rows[0],
           appointment_count: appointmentCountRow?.appointment_count || 0,
+          allergies: allergyRows.map((row) => row.allergen),
         },
       });
     } catch (err) {
@@ -205,6 +221,11 @@ function registerDentalAdminRoutes(app) {
         "emergency_contact_number",
       ),
     };
+    const diabetesStatus = normalizeDiabetesStatus(
+      requireField(body, "diabetes_status"),
+    );
+    const allergies = normalizeAllergies(body.allergies);
+    const allergyError = getAllergyValidationError(allergies);
     const missing = Object.entries(editableFields)
       .filter(([, value]) => !value)
       .map(([field]) => field);
@@ -220,6 +241,15 @@ function registerDentalAdminRoutes(app) {
         error:
           "Enter a valid email address with @ and a domain such as .com or .ph.",
       });
+    }
+    if (!diabetesStatus) {
+      return res.status(400).json({
+        ok: false,
+        error: "Diabetes status must be unknown, no, or yes.",
+      });
+    }
+    if (allergyError) {
+      return res.status(400).json({ ok: false, error: allergyError });
     }
 
     const maximumLengths = {
@@ -252,10 +282,12 @@ function registerDentalAdminRoutes(app) {
                 u.email, u.contact_number,
                 p.house_no, p.street, p.barangay, p.city, p.zip_code,
                 ec.contact_name AS emergency_contact_name,
-                ec.contact_number AS emergency_contact_number
+                ec.contact_number AS emergency_contact_number,
+                COALESCE(pmp.diabetes_status, 'unknown') AS diabetes_status
          FROM patients p
          JOIN users u ON u.user_id = p.user_id
          LEFT JOIN emergency_contacts ec ON ec.patient_id = p.patient_id
+         LEFT JOIN patient_medical_profiles pmp ON pmp.patient_id = p.patient_id
          WHERE p.patient_id = ?
          FOR UPDATE`,
         [patientId],
@@ -264,6 +296,13 @@ function registerDentalAdminRoutes(app) {
         await conn.rollback();
         return res.status(404).json({ ok: false, error: "Patient not found." });
       }
+      const [oldAllergyRows] = await conn.execute(
+        `SELECT allergen
+         FROM patient_allergies
+         WHERE patient_id = ?
+         ORDER BY allergen`,
+        [patientId],
+      );
 
       await conn.execute(
         "UPDATE users SET email = ?, contact_number = ? WHERE user_id = ?",
@@ -301,6 +340,14 @@ function registerDentalAdminRoutes(app) {
          ON DUPLICATE KEY UPDATE patient_id = VALUES(patient_id)`,
         [patientId],
       );
+      await conn.execute(
+        `INSERT INTO patient_medical_profiles (patient_id, diabetes_status)
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE
+           diabetes_status = VALUES(diabetes_status)`,
+        [patientId, diabetesStatus],
+      );
+      await replacePatientAllergies(conn, patientId, allergies);
       await createAuditLog(conn, req, {
         action: "UPDATE_PATIENT",
         entityType: "patient",
@@ -316,8 +363,14 @@ function registerDentalAdminRoutes(app) {
           zip_code: rows[0].zip_code,
           emergency_contact_name: rows[0].emergency_contact_name,
           emergency_contact_number: rows[0].emergency_contact_number,
+          diabetes_status: rows[0].diabetes_status,
+          allergies: oldAllergyRows.map((row) => row.allergen),
         },
-        newValues: editableFields,
+        newValues: {
+          ...editableFields,
+          diabetes_status: diabetesStatus,
+          allergies,
+        },
       });
       await conn.commit();
       return res.json({
@@ -608,10 +661,12 @@ function registerDentalAdminRoutes(app) {
       const [patientRows] = await pool.execute(
         `SELECT
            p.patient_id, u.first_name, u.last_name, p.blood_type, p.date_of_birth,
-           COALESCE(pr.patient_status, 'active') AS status
+           COALESCE(pr.patient_status, 'active') AS status,
+           COALESCE(pmp.diabetes_status, 'unknown') AS diabetes_status
          FROM patients p
          LEFT JOIN users u ON u.user_id = p.user_id
          LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
+         LEFT JOIN patient_medical_profiles pmp ON pmp.patient_id = p.patient_id
          WHERE p.patient_id = ?`,
         [patientId],
       );
@@ -619,6 +674,14 @@ function registerDentalAdminRoutes(app) {
       if (!patientRows.length) {
         return res.status(404).json({ ok: false, error: "Patient not found." });
       }
+
+      const [allergyRows] = await pool.execute(
+        `SELECT allergen
+         FROM patient_allergies
+         WHERE patient_id = ?
+         ORDER BY allergen`,
+        [patientId],
+      );
 
       const [toothRows] = await pool.execute(
         `SELECT dr.dental_record_id, tc.tooth_number, tc.condition_status,
@@ -662,7 +725,7 @@ function registerDentalAdminRoutes(app) {
            DATE_FORMAT(a.appointment_date, '%Y-%m-%d') AS appointment_date,
            DATE_FORMAT(a.appointment_time, '%H:%i:%s') AS appointment_time,
            DATE_FORMAT(pv.date_recorded, '%Y-%m-%d') AS date_recorded,
-           pv.blood_pressure, pv.heart_rate, pv.temperature, pv.weight
+           pv.blood_pressure, pv.heart_rate, pv.temperature
          FROM patient_vitals pv
          JOIN dental_records dr ON dr.dental_record_id = pv.dental_record_id
          LEFT JOIN appointments a ON a.appointment_id = dr.appointment_id
@@ -750,6 +813,8 @@ function registerDentalAdminRoutes(app) {
           blood_type: patient.blood_type,
           date_of_birth: patient.date_of_birth,
           status: patient.status,
+          diabetes_status: patient.diabetes_status,
+          allergies: allergyRows.map((row) => row.allergen),
         },
         tooth_charts: toothCharts,
         treatments,
@@ -761,7 +826,6 @@ function registerDentalAdminRoutes(app) {
           bp: row.blood_pressure || "—",
           pulse: row.heart_rate || "—",
           temp: row.temperature || "—",
-          weight: row.weight || "—",
         })),
       });
     } catch (err) {
@@ -1289,7 +1353,6 @@ function registerDentalAdminRoutes(app) {
       const blood_pressure = requireField(body, "blood_pressure") || null;
       const heart_rate = requireField(body, "heart_rate") || null;
       const temperature = requireField(body, "temperature") || null;
-      const weight = requireField(body, "weight") || null;
 
       const missing = [];
       if (!patient_id) missing.push("patient_id");
@@ -1363,8 +1426,8 @@ function registerDentalAdminRoutes(app) {
 
       await conn.execute(
         `INSERT INTO patient_vitals
-           (dental_record_id, staff_id, date_recorded, blood_pressure, heart_rate, temperature, weight)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+           (dental_record_id, staff_id, date_recorded, blood_pressure, heart_rate, temperature)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         [
           dental_record_id,
           staff_id,
@@ -1372,7 +1435,6 @@ function registerDentalAdminRoutes(app) {
           blood_pressure,
           heart_rate,
           temperature,
-          weight,
         ],
       );
       await conn.commit();
@@ -1385,7 +1447,6 @@ function registerDentalAdminRoutes(app) {
           bp: blood_pressure || "—",
           pulse: heart_rate || "—",
           temp: temperature || "—",
-          weight: weight || "—",
         },
       });
     } catch (err) {
