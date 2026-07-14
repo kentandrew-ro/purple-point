@@ -711,6 +711,50 @@ body.admin-layout {
   border-radius: var(--radius);
   overflow: hidden;
 }
+.schedule-days-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.schedule-days-fieldset legend {
+  margin-bottom: 6px;
+  color: #574f6b;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.schedule-day-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 8px;
+}
+.schedule-day-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 11px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-small);
+  background: #fff;
+  cursor: pointer;
+}
+.schedule-day-option:hover {
+  border-color: var(--purple-light);
+  background: var(--purple-pale);
+}
+.schedule-day-option:has(input:checked) {
+  color: var(--purple);
+  border-color: var(--purple-mid);
+  background: var(--purple-pale);
+}
+.schedule-day-option input[type="checkbox"] {
+  width: 18px;
+  min-height: 18px;
+  margin: 0;
+  accent-color: var(--purple);
+  box-shadow: none;
+}
 .audit-page > h2 {
   margin-bottom: 12px;
 }

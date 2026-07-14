@@ -228,7 +228,8 @@
         <div id="clinic-hours-form-card" class="card" style="display: none">
           <h2 id="clinic-hours-heading">Doctor Availability</h2>
           <p id="clinic-hours-description">
-            Add the regular days and times when a doctor accepts appointments.
+            Select one or more regular days and apply the same availability
+            hours to all of them.
           </p>
           <form id="clinic-hours-form">
             <div
@@ -247,18 +248,67 @@
               <div id="clinic-dentist-suggestions" class="suggestions"></div>
             </div>
 
-            <div class="field">
-              <label for="day_of_week">Regular Days and Hours</label>
-              <select id="day_of_week" name="day_of_week" required>
-                <option value="Monday">Monday</option>
-                <option value="Tuesday">Tuesday</option>
-                <option value="Wednesday">Wednesday</option>
-                <option value="Thursday">Thursday</option>
-                <option value="Friday">Friday</option>
-                <option value="Saturday">Saturday</option>
-                <option value="Sunday">Sunday</option>
-              </select>
-            </div>
+            <fieldset class="schedule-days-fieldset">
+              <legend class="required-field-label">Regular Days</legend>
+              <div class="schedule-day-options">
+                <label class="schedule-day-option">
+                  <input
+                    type="checkbox"
+                    name="days_of_week"
+                    value="Monday"
+                  />
+                  Monday
+                </label>
+                <label class="schedule-day-option">
+                  <input
+                    type="checkbox"
+                    name="days_of_week"
+                    value="Tuesday"
+                  />
+                  Tuesday
+                </label>
+                <label class="schedule-day-option">
+                  <input
+                    type="checkbox"
+                    name="days_of_week"
+                    value="Wednesday"
+                  />
+                  Wednesday
+                </label>
+                <label class="schedule-day-option">
+                  <input
+                    type="checkbox"
+                    name="days_of_week"
+                    value="Thursday"
+                  />
+                  Thursday
+                </label>
+                <label class="schedule-day-option">
+                  <input
+                    type="checkbox"
+                    name="days_of_week"
+                    value="Friday"
+                  />
+                  Friday
+                </label>
+                <label class="schedule-day-option">
+                  <input
+                    type="checkbox"
+                    name="days_of_week"
+                    value="Saturday"
+                  />
+                  Saturday
+                </label>
+                <label class="schedule-day-option">
+                  <input
+                    type="checkbox"
+                    name="days_of_week"
+                    value="Sunday"
+                  />
+                  Sunday
+                </label>
+              </div>
+            </fieldset>
 
             <div class="field">
               <label for="start-shift">Start Shift</label>
@@ -270,7 +320,7 @@
               <input id="end-shift" name="end_time" type="time" required />
             </div>
 
-            <button type="submit">Save Hours</button>
+            <button type="submit">Save Selected Days</button>
           </form>
           <div id="clinic-hours-result" style="margin-top: 16px"></div>
         </div>

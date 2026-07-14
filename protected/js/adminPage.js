@@ -78,7 +78,7 @@ function configureScheduleInterface() {
     if (heading) heading.textContent = "My Clinic Hours";
     if (description) {
       description.textContent =
-        "Add the regular days and times when you accept appointments.";
+        "Select one or more regular days and apply the same availability hours to all of them.";
     }
     if (tabDescription) {
       tabDescription.textContent = "Manage your own appointment availability.";
@@ -92,7 +92,7 @@ function configureScheduleInterface() {
   if (heading) heading.textContent = "Doctor Availability";
   if (description) {
     description.textContent =
-      "Add the regular days and times when a doctor accepts appointments.";
+      "Select one or more regular days and apply the same availability hours to all of them.";
   }
   if (tabDescription) {
     tabDescription.textContent = isStaff
@@ -1071,11 +1071,15 @@ async function submitClinicHoursForm(e) {
 
   try {
     const payload = getFormPayload(form);
+    payload.days_of_week = Array.from(
+      form.querySelectorAll('input[name="days_of_week"]:checked'),
+      (checkbox) => checkbox.value,
+    );
     const missing = [];
     if (managementRole !== "doctor" && !payload.dentist_id) {
       missing.push("dentist_id");
     }
-    if (!payload.day_of_week) missing.push("day_of_week");
+    if (!payload.days_of_week.length) missing.push("regular days");
     if (!payload.start_time) missing.push("start_time");
     if (!payload.end_time) missing.push("end_time");
 
@@ -1100,7 +1104,7 @@ async function submitClinicHoursForm(e) {
 
     showResult(
       resultBox,
-      `Doctor availability saved successfully. Schedule ID: ${data.schedule_id ?? "N/A"}.`,
+      `Doctor availability saved for ${data.schedule_count} day${data.schedule_count === 1 ? "" : "s"}: ${data.added_days.join(", ")}.`,
     );
     form.reset();
   } catch (err) {

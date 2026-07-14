@@ -880,114 +880,149 @@ function registerAuthProfileRoutes(
     }
     if (!requireRole(req, res, ["superadmin", "doctor"])) return;
 
+    const body = req.body || {};
+    const role = normalizeRole(req.session.role);
+    let dentistId = Number.parseInt(requireField(body, "dentist_id"), 10);
+    const startTime = requireField(body, "start_time");
+    const endTime = requireField(body, "end_time");
+    const requestedDays = Array.isArray(body.days_of_week)
+      ? body.days_of_week
+      : [body.days_of_week || body.day_of_week].filter(Boolean);
+    const daysOfWeek = [
+      ...new Set(requestedDays.map((day) => String(day).trim())),
+    ];
+    const validDays = [
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+    ];
+    const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+    if (role !== "doctor" && !dentistId) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Please select a dentist." });
+    }
+    if (!daysOfWeek.length) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Select at least one regular day." });
+    }
+    if (daysOfWeek.some((day) => !validDays.includes(day))) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "One or more selected days are invalid." });
+    }
+    if (!timePattern.test(startTime) || !timePattern.test(endTime)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Please enter valid start and end times." });
+    }
+    if (startTime >= endTime) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Start time must be before end time." });
+    }
+
+    let conn;
     try {
-      const body = req.body || {};
-      const role = normalizeRole(req.session.role);
-      let dentist_id = parseInt(requireField(body, "dentist_id"), 10);
-      const day_of_week = requireField(body, "day_of_week");
-      const start_time = requireField(body, "start_time");
-      const end_time = requireField(body, "end_time");
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
 
       if (role === "doctor") {
-        const [ownProfiles] = await pool.execute(
-          "SELECT dentist_id FROM dentist WHERE user_id = ?",
+        const [ownProfiles] = await conn.execute(
+          "SELECT dentist_id FROM dentist WHERE user_id = ? FOR UPDATE",
           [req.session.userId],
         );
         if (!ownProfiles.length) {
+          await conn.rollback();
           return res
             .status(404)
             .json({ ok: false, error: "Doctor profile not found." });
         }
-        dentist_id = ownProfiles[0].dentist_id;
+        dentistId = ownProfiles[0].dentist_id;
       }
 
-      const missing = [];
-      if (!dentist_id) missing.push("dentist_id");
-      if (!day_of_week) missing.push("day_of_week");
-      if (!start_time) missing.push("start_time");
-      if (!end_time) missing.push("end_time");
-
-      if (missing.length) {
-        return res.status(400).json({
-          ok: false,
-          error: `Missing field(s): ${missing.join(", ")}`,
-        });
-      }
-
-      const validDays = [
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-        "Sunday",
-      ];
-      if (!validDays.includes(day_of_week)) {
-        return res
-          .status(400)
-          .json({ ok: false, error: "Invalid day_of_week." });
-      }
-
-      const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
-      if (!timePattern.test(start_time) || !timePattern.test(end_time)) {
-        return res
-          .status(400)
-          .json({ ok: false, error: "Invalid start_time or end_time format." });
-      }
-
-      if (start_time >= end_time) {
-        return res
-          .status(400)
-          .json({ ok: false, error: "Start time must be before end time." });
-      }
-
-      const [dentists] = await pool.execute(
+      const [dentists] = await conn.execute(
         "SELECT dentist_id FROM dentist WHERE dentist_id = ?",
-        [dentist_id],
+        [dentistId],
       );
       if (!dentists.length) {
-        return res.status(404).json({ ok: false, error: "Dentist not found." });
+        await conn.rollback();
+        return res
+          .status(404)
+          .json({ ok: false, error: "Dentist not found." });
       }
 
-      const [overlapping] = await pool.execute(
-        `SELECT schedule_id
+      const dayPlaceholders = daysOfWeek.map(() => "?").join(", ");
+      const [overlapping] = await conn.execute(
+        `SELECT schedule_id, day_of_week
          FROM dentist_schedule
          WHERE dentist_id = ?
-           AND day_of_week = ?
+           AND day_of_week IN (${dayPlaceholders})
            AND is_active = TRUE
            AND start_time < TIME(?)
            AND end_time > TIME(?)
-         LIMIT 1`,
-        [dentist_id, day_of_week, end_time, start_time],
+         FOR UPDATE`,
+        [dentistId, ...daysOfWeek, endTime, startTime],
       );
       if (overlapping.length) {
+        await conn.rollback();
+        const overlappingDays = [
+          ...new Set(overlapping.map((schedule) => schedule.day_of_week)),
+        ].join(", ");
         return res.status(409).json({
           ok: false,
-          error:
-            "These doctor availability hours overlap an existing active schedule.",
+          error: `Availability overlaps an existing schedule on: ${overlappingDays}. No days were saved.`,
         });
       }
 
-      const [result] = await pool.execute(
+      const valuePlaceholders = daysOfWeek
+        .map(() => "(?, ?, ?, ?)")
+        .join(", ");
+      const values = daysOfWeek.flatMap((day) => [
+        dentistId,
+        day,
+        startTime,
+        endTime,
+      ]);
+      const [result] = await conn.execute(
         `INSERT INTO dentist_schedule
            (dentist_id, day_of_week, start_time, end_time)
-         VALUES (?, ?, ?, ?)`,
-        [dentist_id, day_of_week, start_time, end_time],
+         VALUES ${valuePlaceholders}`,
+        values,
       );
 
-      await recordAudit(req, {
+      await createAuditLog(conn, req, {
         action: "UPDATE_DENTIST_SCHEDULE",
         entityType: "dentist_schedule",
         entityId: result.insertId,
-        description: `Added ${day_of_week} schedule for dentist #${dentist_id}`,
-        newValues: { dentist_id, day_of_week, start_time, end_time },
+        description: `Added availability for dentist #${dentistId} on ${daysOfWeek.join(", ")}`,
+        newValues: {
+          dentist_id: dentistId,
+          days_of_week: daysOfWeek,
+          start_time: startTime,
+          end_time: endTime,
+        },
       });
+      await conn.commit();
 
-      return res.status(201).json({ ok: true, schedule_id: result.insertId });
+      return res.status(201).json({
+        ok: true,
+        schedule_id: result.insertId,
+        schedule_count: daysOfWeek.length,
+        added_days: daysOfWeek,
+      });
     } catch (err) {
+      if (conn) await conn.rollback();
       console.error(err);
       return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    } finally {
+      if (conn) conn.release();
     }
   });
 }
