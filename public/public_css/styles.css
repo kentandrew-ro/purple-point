@@ -794,3 +794,6 @@ dialog form {
     flex-direction: column;
   }
 }
+body.admin-layout[data-role="loading"] .sidebar {
+  visibility: hidden;
+}

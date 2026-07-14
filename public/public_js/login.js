@@ -138,7 +138,7 @@ async function handleLogin(event) {
       throw new Error(data.error || "Unable to sign in.");
     }
 
-    if (data.role === "admin") {
+    if (["superadmin", "doctor", "staff", "admin"].includes(data.role)) {
       window.location.replace("/adminPage.html");
       return;
     }

@@ -23,3 +23,11 @@ make schema
 
 The database password used in the DSN must be URL-encoded if it contains
 characters such as `#`, `<`, `@`, or `:`.
+
+## Role migration
+
+For an existing database created with the old `patient`/`admin` roles, run
+`role_migration.sql` once before starting this version. It keeps the earliest
+legacy administrator as the superadmin and converts other linked doctor/staff
+accounts to their restricted roles. New databases created from `database.sql`
+already use `patient`, `superadmin`, `doctor`, and `staff` roles.

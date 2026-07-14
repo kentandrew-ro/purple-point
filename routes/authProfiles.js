@@ -2,7 +2,12 @@
 
 const bcrypt = require("bcrypt");
 const { pool } = require("../lib/database");
-const { INTERNAL_ERROR_MESSAGE, requireField } = require("../lib/http");
+const {
+  INTERNAL_ERROR_MESSAGE,
+  normalizeRole,
+  requireField,
+  requireRole,
+} = require("../lib/http");
 const {
   getDoctorProfileValidationError,
   isIsoDate,
@@ -68,7 +73,7 @@ function registerAuthProfileRoutes(
           );
         });
         req.session.userId = user.user_id;
-        req.session.role = user.role;
+        req.session.role = normalizeRole(user.role);
         await new Promise((resolve, reject) => {
           req.session.save((error) => (error ? reject(error) : resolve()));
         });
@@ -89,7 +94,7 @@ function registerAuthProfileRoutes(
 
         return res.status(200).json({
           message: "Login successful!",
-          role: user.role,
+          role: normalizeRole(user.role),
           profileComplete,
         });
       } else {
@@ -142,7 +147,7 @@ function registerAuthProfileRoutes(
         username: user.username,
         email: user.email,
         contactNumber: user.contact_number,
-        role: user.role || req.session.role,
+        role: normalizeRole(user.role || req.session.role),
       });
     } catch (error) {
       console.error(error);
@@ -154,6 +159,7 @@ function registerAuthProfileRoutes(
     if (!req.session.userId) {
       return res.status(401).json({ error: "Not logged in" });
     }
+    if (!requireRole(req, res, ["patient"])) return;
 
     try {
       const [rows] = await pool.execute(
@@ -193,6 +199,7 @@ function registerAuthProfileRoutes(
     if (!req.session.userId) {
       return res.status(401).json({ error: "Not logged in" });
     }
+    if (!requireRole(req, res, ["patient"])) return;
 
     let conn;
     try {
@@ -366,9 +373,7 @@ function registerAuthProfileRoutes(
     if (!req.session.userId) {
       return res.status(401).json({ error: "Not logged in" });
     }
-    if (req.session.role !== "admin") {
-      return res.status(403).json({ error: "Forbidden" });
-    }
+    if (!requireRole(req, res, ["superadmin"])) return;
 
     try {
       const body = req.body || {};
@@ -461,9 +466,7 @@ function registerAuthProfileRoutes(
     if (!req.session.userId) {
       return res.status(401).json({ error: "Not logged in" });
     }
-    if (req.session.role !== "admin") {
-      return res.status(403).json({ error: "Forbidden" });
-    }
+    if (!requireRole(req, res, ["superadmin"])) return;
 
     try {
       const body = req.body || {};
@@ -497,11 +500,20 @@ function registerAuthProfileRoutes(
       }
 
       const [users] = await pool.execute(
-        "SELECT user_id FROM users WHERE user_id = ?",
+        "SELECT user_id, role FROM users WHERE user_id = ?",
         [user_id],
       );
       if (!users.length) {
         return res.status(404).json({ ok: false, error: "User not found." });
+      }
+      if (
+        user_id === req.session.userId ||
+        normalizeRole(users[0].role) !== "patient"
+      ) {
+        return res.status(409).json({
+          ok: false,
+          error: "Only another patient account can be assigned the staff role.",
+        });
       }
 
       const [existing] = await pool.execute(
@@ -529,6 +541,18 @@ function registerAuthProfileRoutes(
         },
       );
 
+      await pool.execute("UPDATE users SET role = 'staff' WHERE user_id = ?", [
+        user_id,
+      ]);
+
+      await recordAudit(req, {
+        action: "ASSIGN_ROLE",
+        entityType: "user",
+        entityId: user_id,
+        description: `Assigned staff role to user #${user_id}`,
+        newValues: { role: "staff", staff_id: result.insertId },
+      });
+
       return res.json({ ok: true, staff_id: result.insertId });
     } catch (err) {
       console.error(err);
@@ -540,9 +564,7 @@ function registerAuthProfileRoutes(
     if (!req.session.userId) {
       return res.status(401).json({ error: "Not logged in" });
     }
-    if (req.session.role !== "admin") {
-      return res.status(403).json({ error: "Forbidden" });
-    }
+    if (!requireRole(req, res, ["superadmin"])) return;
 
     let conn;
     try {
@@ -596,12 +618,22 @@ function registerAuthProfileRoutes(
       }
 
       const [users] = await conn.execute(
-        "SELECT user_id FROM users WHERE user_id = ?",
+        "SELECT user_id, role FROM users WHERE user_id = ?",
         [user_id],
       );
       if (!users.length) {
         await conn.rollback();
         return res.status(404).json({ ok: false, error: "User not found." });
+      }
+      if (
+        user_id === req.session.userId ||
+        normalizeRole(users[0].role) !== "patient"
+      ) {
+        await conn.rollback();
+        return res.status(409).json({
+          ok: false,
+          error: "Only another patient account can be assigned the doctor role.",
+        });
       }
 
       const [existing] = await conn.execute(
@@ -644,6 +676,18 @@ function registerAuthProfileRoutes(
         },
       );
 
+      await conn.execute("UPDATE users SET role = 'doctor' WHERE user_id = ?", [
+        user_id,
+      ]);
+
+      await createAuditLog(conn, req, {
+        action: "ASSIGN_ROLE",
+        entityType: "user",
+        entityId: user_id,
+        description: `Assigned doctor role to user #${user_id}`,
+        newValues: { role: "doctor", dentist_id: dentistResult.insertId },
+      });
+
       await conn.commit();
       return res.json({ ok: true, doctor_id: dentistResult.insertId });
     } catch (err) {
@@ -669,9 +713,7 @@ function registerAuthProfileRoutes(
     if (!req.session.userId) {
       return res.status(401).json({ error: "Not logged in" });
     }
-    if (req.session.role !== "admin") {
-      return res.status(403).json({ error: "Forbidden" });
-    }
+    if (!requireRole(req, res, ["superadmin", "staff"])) return;
 
     try {
       const body = req.body || {};

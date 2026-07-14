@@ -6,7 +6,7 @@ CREATE TABLE users (
     email VARCHAR(100) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     contact_number VARCHAR(15) NOT NULL,
-    role ENUM('patient', 'admin') DEFAULT 'patient',
+    role ENUM('patient', 'superadmin', 'doctor', 'staff') NOT NULL DEFAULT 'patient',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

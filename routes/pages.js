@@ -1,7 +1,12 @@
 "use strict";
 
 const path = require("path");
+const { MANAGEMENT_ROLES, normalizeRole } = require("../lib/http");
 const ROOT_DIR = path.join(__dirname, "..");
+
+function isManagementUser(req) {
+  return MANAGEMENT_ROLES.includes(normalizeRole(req.session.role));
+}
 
 function registerPageRoutes(app) {
   app.get("/", (req, res) => {
@@ -9,7 +14,8 @@ function registerPageRoutes(app) {
   });
   app.get("/patientPage.html", (req, res) => {
     if (!req.session.userId) return res.redirect("/login.html");
-    if (req.session.role !== "patient") return res.redirect("/adminPage.html");
+    if (normalizeRole(req.session.role) !== "patient")
+      return res.redirect("/adminPage.html");
     res.sendFile(
       path.join(ROOT_DIR, "protected", "patient", "patientPage.html"),
     );
@@ -22,18 +28,21 @@ function registerPageRoutes(app) {
 
   app.get("/adminPage.html", (req, res) => {
     if (!req.session.userId) return res.redirect("/login.html");
-    if (req.session.role !== "admin") return res.redirect("/patientPage.html");
+    if (!isManagementUser(req)) return res.redirect("/patientPage.html");
     res.sendFile(path.join(ROOT_DIR, "protected", "admin", "adminPage.html"));
   });
 
   app.get("/profile.html", (req, res) => {
     if (!req.session.userId) return res.redirect("/login.html");
-    if (req.session.role !== "patient") return res.redirect("/adminPage.html");
+    if (normalizeRole(req.session.role) !== "patient")
+      return res.redirect("/adminPage.html");
     res.sendFile(path.join(ROOT_DIR, "protected", "patient", "profile.html"));
   });
 
   app.get("/appointments.html", (req, res) => {
     if (!req.session.userId) return res.redirect("/login.html");
+    if (normalizeRole(req.session.role) !== "patient")
+      return res.redirect("/adminPage.html");
     res.sendFile(
       path.join(ROOT_DIR, "protected", "patient", "appointments.html"),
     );
@@ -51,7 +60,7 @@ function registerPageRoutes(app) {
 
   app.get("/js/adminPage.js", (req, res) => {
     if (!req.session.userId) return res.status(401).send("Unauthorized");
-    if (req.session.role !== "admin") return res.status(403).send("Forbidden");
+    if (!isManagementUser(req)) return res.status(403).send("Forbidden");
     res.sendFile(path.join(ROOT_DIR, "protected", "js", "adminPage.js"));
   });
 }

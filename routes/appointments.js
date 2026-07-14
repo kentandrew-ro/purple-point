@@ -1,7 +1,12 @@
 "use strict";
 
 const { pool } = require("../lib/database");
-const { INTERNAL_ERROR_MESSAGE, requireField } = require("../lib/http");
+const {
+  INTERNAL_ERROR_MESSAGE,
+  normalizeRole,
+  requireField,
+  requireRole,
+} = require("../lib/http");
 const {
   APPOINTMENT_STATUSES,
   APPOINTMENT_TYPES,
@@ -19,7 +24,8 @@ function registerAppointmentRoutes(app) {
     try {
       let rows;
 
-      if (req.session.role === "admin") {
+      const role = normalizeRole(req.session.role);
+      if (["superadmin", "staff"].includes(role)) {
         [rows] = await pool.execute(
           `SELECT
              a.appointment_id, a.patient_id,
@@ -36,6 +42,26 @@ function registerAppointmentRoutes(app) {
            LEFT JOIN dentist d ON d.dentist_id = a.dentist_id
            LEFT JOIN users du ON du.user_id = d.user_id
            ORDER BY a.appointment_date DESC, a.appointment_time DESC`,
+        );
+      } else if (role === "doctor") {
+        [rows] = await pool.execute(
+          `SELECT
+             a.appointment_id, a.patient_id,
+             pu.first_name, pu.last_name,
+             d.dentist_id,
+             CONCAT('Dr. ', du.first_name, ' ', du.last_name) AS doctor_name,
+             DATE_FORMAT(a.appointment_date, '%Y-%m-%d') AS appointment_date,
+             DATE_FORMAT(a.appointment_time, '%H:%i:%s') AS appointment_time,
+             a.appointment_type, a.appointment_status,
+             a.reason_for_visit, a.cancel_reason, a.created_at
+           FROM appointments a
+           JOIN patients p ON p.patient_id = a.patient_id
+           JOIN users pu ON pu.user_id = p.user_id
+           JOIN dentist d ON d.dentist_id = a.dentist_id
+           JOIN users du ON du.user_id = d.user_id
+           WHERE d.user_id = ?
+           ORDER BY a.appointment_date DESC, a.appointment_time DESC`,
+          [req.session.userId],
         );
       } else {
         [rows] = await pool.execute(
@@ -76,7 +102,15 @@ function registerAppointmentRoutes(app) {
       let patient_id;
       let patientProfile;
 
-      if (req.session.role === "admin") {
+      const role = normalizeRole(req.session.role);
+      if (role === "doctor") {
+        return res.status(403).json({
+          ok: false,
+          error: "Doctors can view their schedule but cannot create appointments.",
+        });
+      }
+
+      if (["superadmin", "staff"].includes(role)) {
         patient_id = parseInt(body.patient_id, 10);
         if (!patient_id) {
           return res
@@ -305,7 +339,22 @@ function registerAppointmentRoutes(app) {
           .json({ ok: false, error: "Appointment is already cancelled." });
       }
 
-      if (req.session.role !== "admin") {
+      const role = normalizeRole(req.session.role);
+      if (role === "doctor") {
+        const [assignment] = await pool.execute(
+          `SELECT a.appointment_id
+           FROM appointments a
+           JOIN dentist d ON d.dentist_id = a.dentist_id
+           WHERE a.appointment_id = ? AND d.user_id = ?`,
+          [appointmentId, req.session.userId],
+        );
+        if (!assignment.length) {
+          return res.status(403).json({
+            ok: false,
+            error: "You can only update appointments assigned to you.",
+          });
+        }
+      } else if (!["superadmin", "staff"].includes(role)) {
         const [ownership] = await pool.execute(
           `SELECT a.appointment_id
            FROM appointments a
@@ -348,9 +397,7 @@ function registerAppointmentRoutes(app) {
     if (!req.session.userId) {
       return res.status(401).json({ error: "Not logged in" });
     }
-    if (req.session.role !== "admin") {
-      return res.status(403).json({ error: "Forbidden" });
-    }
+    if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
 
     const appointmentId = parseInt(req.params.id, 10);
     if (!appointmentId) {
@@ -380,6 +427,22 @@ function registerAppointmentRoutes(app) {
     }
 
     try {
+      if (normalizeRole(req.session.role) === "doctor") {
+        const [assignment] = await pool.execute(
+          `SELECT a.appointment_id
+           FROM appointments a
+           JOIN dentist d ON d.dentist_id = a.dentist_id
+           WHERE a.appointment_id = ? AND d.user_id = ?`,
+          [appointmentId, req.session.userId],
+        );
+        if (!assignment.length) {
+          return res.status(403).json({
+            ok: false,
+            error: "You can only update appointments assigned to you.",
+          });
+        }
+      }
+
       const [existing] = await pool.execute(
         "SELECT appointment_id, appointment_status FROM appointments WHERE appointment_id = ?",
         [appointmentId],
@@ -426,25 +489,33 @@ function registerAppointmentRoutes(app) {
   app.get("/api/dashboard/stats", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
 
     try {
       const [[{ total_patients }]] = await pool.execute(
         "SELECT COUNT(*) AS total_patients FROM patients",
       );
 
+      const role = normalizeRole(req.session.role);
+      const doctorFilter =
+        role === "doctor"
+          ? " AND EXISTS (SELECT 1 FROM dentist d WHERE d.dentist_id = appointments.dentist_id AND d.user_id = ?)"
+          : "";
+      const doctorParams = role === "doctor" ? [req.session.userId] : [];
+
       const [[{ appointments_today }]] = await pool.execute(
         `SELECT COUNT(*) AS appointments_today
          FROM appointments
          WHERE appointment_date = CURDATE()
-           AND appointment_status != 'cancelled'`,
+           AND appointment_status != 'cancelled'${doctorFilter}`,
+        doctorParams,
       );
 
       const [[{ pending_review }]] = await pool.execute(
         `SELECT COUNT(*) AS pending_review
          FROM appointments
-         WHERE appointment_status = 'scheduled'`,
+         WHERE appointment_status = 'scheduled'${doctorFilter}`,
+        doctorParams,
       );
 
       return res.json({
@@ -461,10 +532,12 @@ function registerAppointmentRoutes(app) {
   app.get("/api/dashboard/schedule", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
 
     try {
+      const role = normalizeRole(req.session.role);
+      const doctorWhere = role === "doctor" ? " AND d.user_id = ?" : "";
+      const doctorParams = role === "doctor" ? [req.session.userId] : [];
       const [rows] = await pool.execute(
         `SELECT
            DATE_FORMAT(a.appointment_time, '%h:%i %p')                          AS time,
@@ -480,7 +553,9 @@ function registerAppointmentRoutes(app) {
          LEFT JOIN users du ON du.user_id = d.user_id
          WHERE a.appointment_date = CURDATE()
            AND a.appointment_status != 'cancelled'
+           ${doctorWhere}
          ORDER BY a.appointment_time ASC`,
+        doctorParams,
       );
 
       return res.json(rows);

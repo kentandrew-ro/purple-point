@@ -3,8 +3,8 @@
 const { pool } = require("../lib/database");
 const {
   INTERNAL_ERROR_MESSAGE,
-  requireAdmin,
   requireField,
+  requireRole,
 } = require("../lib/http");
 const {
   BILLING_STATUSES,
@@ -18,7 +18,7 @@ const { createAuditLog, recordAudit } = require("../lib/audit");
 
 function registerBillingAuditRoutes(app) {
   app.get("/api/audit-logs", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
 
     const search = requireField(req.query, "search") || "";
     const action = requireField(req.query, "action") || "";
@@ -100,7 +100,7 @@ function registerBillingAuditRoutes(app) {
   });
 
   app.get("/api/audit-logs/:id", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
     const auditLogId = Number.parseInt(req.params.id, 10);
     if (!auditLogId) {
       return res
@@ -131,7 +131,7 @@ function registerBillingAuditRoutes(app) {
   });
 
   app.get("/api/billings", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireRole(req, res, ["superadmin", "staff"])) return;
 
     const q = requireField(req.query, "q") || "";
     const status = (requireField(req.query, "status") || "").toLowerCase();
@@ -176,7 +176,7 @@ function registerBillingAuditRoutes(app) {
   });
 
   app.get("/api/billing/patients/:patientId/treatments", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireRole(req, res, ["superadmin", "staff"])) return;
 
     const patientId = parseInt(req.params.patientId, 10);
     if (!patientId) {
@@ -207,7 +207,7 @@ function registerBillingAuditRoutes(app) {
   });
 
   app.post("/api/billings", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireRole(req, res, ["superadmin", "staff"])) return;
 
     const patientTreatmentId = Number.parseInt(
       req.body?.patient_treatment_id,
@@ -310,7 +310,7 @@ function registerBillingAuditRoutes(app) {
   });
 
   app.get("/api/billings/:id", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireRole(req, res, ["superadmin", "staff"])) return;
 
     const billingId = Number.parseInt(req.params.id, 10);
     if (!billingId) {
@@ -387,7 +387,7 @@ function registerBillingAuditRoutes(app) {
   });
 
   app.patch("/api/billings/:id", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireRole(req, res, ["superadmin", "staff"])) return;
 
     const billingId = Number.parseInt(req.params.id, 10);
     const billingDate = requireField(req.body, "billing_date");
@@ -495,7 +495,7 @@ function registerBillingAuditRoutes(app) {
   });
 
   app.post("/api/billings/:id/payments", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireRole(req, res, ["superadmin", "staff"])) return;
 
     const billingId = Number.parseInt(req.params.id, 10);
     const paymentDate = requireField(req.body, "payment_date");
@@ -657,7 +657,7 @@ function registerBillingAuditRoutes(app) {
   });
 
   app.patch("/api/payments/:id/status", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireRole(req, res, ["superadmin", "staff"])) return;
 
     const paymentId = Number.parseInt(req.params.id, 10);
     const paymentStatus = (

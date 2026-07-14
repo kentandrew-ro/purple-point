@@ -1,7 +1,11 @@
 "use strict";
 
 const { pool } = require("../lib/database");
-const { INTERNAL_ERROR_MESSAGE, requireField } = require("../lib/http");
+const {
+  INTERNAL_ERROR_MESSAGE,
+  requireField,
+  requireRole,
+} = require("../lib/http");
 const {
   getDoctorProfileValidationError,
   isIsoDate,
@@ -14,8 +18,7 @@ function registerDentalAdminRoutes(app) {
   app.get("/api/admin/users/search", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin"])) return;
 
     try {
       const q = requireField(req.query, "q");
@@ -23,11 +26,13 @@ function registerDentalAdminRoutes(app) {
 
       const search = `%${q}%`;
       const [rows] = await pool.execute(
-        `SELECT u.user_id, u.first_name, u.last_name, u.username, u.email, u.contact_number,
+        `SELECT u.user_id, u.first_name, u.last_name, u.username, u.email, u.contact_number, u.role,
                 p.date_of_birth, p.gender
            FROM users u
            LEFT JOIN patients p ON p.user_id = u.user_id
-          WHERE (
+          WHERE u.role = 'patient'
+            AND u.user_id <> ?
+            AND (
               u.first_name LIKE ?
               OR u.last_name LIKE ?
               OR CONCAT(u.first_name, ' ', u.last_name) LIKE ?
@@ -36,7 +41,7 @@ function registerDentalAdminRoutes(app) {
               OR u.contact_number LIKE ?
             )
           LIMIT 12`,
-        [search, search, search, search, search, search],
+        [req.session.userId, search, search, search, search, search, search],
       );
 
       return res.json(
@@ -47,6 +52,7 @@ function registerDentalAdminRoutes(app) {
           username: row.username,
           email: row.email,
           contact_number: row.contact_number,
+          role: row.role === "admin" ? "superadmin" : row.role,
           date_of_birth: row.date_of_birth,
           gender: row.gender,
         })),
@@ -60,8 +66,7 @@ function registerDentalAdminRoutes(app) {
   app.get("/api/patients/search", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
 
     try {
       const q = requireField(req.query, "q");
@@ -94,8 +99,7 @@ function registerDentalAdminRoutes(app) {
   app.get("/api/patients/:id", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin", "doctor"])) return;
 
     const patientId = parseInt(req.params.id, 10);
     if (!patientId) {
@@ -215,8 +219,7 @@ function registerDentalAdminRoutes(app) {
   app.get("/api/dentists/search", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin", "staff"])) return;
 
     try {
       const q = requireField(req.query, "q");
@@ -244,8 +247,7 @@ function registerDentalAdminRoutes(app) {
   app.get("/api/appointments/patient/:patientId", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin", "doctor"])) return;
 
     const patientId = parseInt(req.params.patientId, 10);
     if (!patientId) {
@@ -285,8 +287,7 @@ function registerDentalAdminRoutes(app) {
   app.get("/api/dental-records/patient/:patientId", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin", "doctor"])) return;
 
     const patientId = parseInt(req.params.patientId, 10);
     if (!patientId) {
@@ -418,8 +419,7 @@ function registerDentalAdminRoutes(app) {
   app.put("/api/dental-records/:id", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin", "doctor"])) return;
 
     const recordId = parseInt(req.params.id, 10);
     if (!recordId) {
@@ -561,8 +561,7 @@ function registerDentalAdminRoutes(app) {
   app.delete("/api/dental-records/:id/treatment", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin", "doctor"])) return;
 
     const recordId = parseInt(req.params.id, 10);
     if (!recordId) {
@@ -705,8 +704,7 @@ function registerDentalAdminRoutes(app) {
   app.post("/api/dental-records", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin", "doctor"])) return;
 
     try {
       const body = req.body || {};
@@ -919,8 +917,7 @@ function registerDentalAdminRoutes(app) {
   app.post("/api/patient-vitals", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin", "doctor"])) return;
 
     let conn;
     try {
@@ -1048,8 +1045,7 @@ function registerDentalAdminRoutes(app) {
   app.put("/api/tooth-chart", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin", "doctor"])) return;
 
     try {
       const body = req.body || {};
@@ -1140,8 +1136,7 @@ function registerDentalAdminRoutes(app) {
   app.get("/api/admin/users/summary", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin"])) return;
 
     try {
       const [[{ total_doctors }]] = await pool.execute(
@@ -1191,8 +1186,7 @@ function registerDentalAdminRoutes(app) {
   app.post("/api/admin/users/promote", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (req.session.role !== "admin")
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireRole(req, res, ["superadmin"])) return;
 
     try {
       const body = req.body || {};
@@ -1259,6 +1253,12 @@ function registerDentalAdminRoutes(app) {
       if (!users.length) {
         return res.status(404).json({ ok: false, error: "User not found." });
       }
+      if (user_id === req.session.userId || users[0].role !== "patient") {
+        return res.status(409).json({
+          ok: false,
+          error: "Only another patient account can be assigned a staff or doctor role.",
+        });
+      }
 
       if (role === "doctor") {
         // name/contact/email now come from the linked users row, so dedupe
@@ -1300,17 +1300,17 @@ function registerDentalAdminRoutes(app) {
         );
 
         await pool.execute(
-          "UPDATE users SET role = 'admin' WHERE user_id = ?",
+          "UPDATE users SET role = 'doctor' WHERE user_id = ?",
           [user_id],
         );
         await recordAudit(req, {
-          action: "PROMOTE_USER",
+          action: "ASSIGN_ROLE",
           entityType: "user",
           entityId: user_id,
-          description: `Promoted ${users[0].first_name} ${users[0].last_name} to dentist`,
+          description: `Assigned doctor role to ${users[0].first_name} ${users[0].last_name}`,
           oldValues: { role: users[0].role },
           newValues: {
-            role: "admin",
+            role: "doctor",
             profile_type: "dentist",
             dentist_id: result.insertId,
             specialization,
@@ -1342,17 +1342,17 @@ function registerDentalAdminRoutes(app) {
         [user_id, date_of_birth, gender, shift_schedule, hire_date],
       );
 
-      await pool.execute("UPDATE users SET role = 'admin' WHERE user_id = ?", [
+      await pool.execute("UPDATE users SET role = 'staff' WHERE user_id = ?", [
         user_id,
       ]);
       await recordAudit(req, {
-        action: "PROMOTE_USER",
+        action: "ASSIGN_ROLE",
         entityType: "user",
         entityId: user_id,
-        description: `Promoted ${users[0].first_name} ${users[0].last_name} to staff`,
+        description: `Assigned staff role to ${users[0].first_name} ${users[0].last_name}`,
         oldValues: { role: users[0].role },
         newValues: {
-          role: "admin",
+          role: "staff",
           profile_type: "staff",
           staff_id: result.insertId,
           shift_schedule,

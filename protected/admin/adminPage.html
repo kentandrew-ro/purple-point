@@ -3,19 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Admin Page - PurplePoint</title>
+    <title>Management Dashboard - PurplePoint</title>
     <link rel="stylesheet" href="/public_css/styles.css" />
   </head>
-  <body class="admin-layout">
+  <body class="admin-layout" data-role="loading">
     <header class="admin-topbar">
       <div class="admin-brand">
         <span class="brand-name">Purple<span>Point</span></span>
-        <small>Admin</small>
+        <small id="portal-role-label">Management</small>
       </div>
       <div class="admin-account">
         <div class="current-user">
           <strong data-current-user-name>Loading...</strong>
-          <small data-current-user-role>Admin</small>
+          <small data-current-user-role>Management</small>
         </div>
         <button type="button" id="sign-out-button" onclick="signOut()">
           Sign Out
@@ -26,39 +26,39 @@
     <div class="sidebar">
       <span class="section-label">Overview</span>
       <ul>
-        <li><a href="#" onclick="showTab('dashboard')">Dashboard</a></li>
+        <li><a href="#" data-roles="superadmin doctor staff" onclick="showTab('dashboard')">Dashboard</a></li>
       </ul>
       <span class="section-label">Appointments</span>
       <ul>
         <li>
-          <a href="#" onclick="showTab('view-appointments')"
+          <a href="#" data-roles="superadmin doctor staff" onclick="showTab('view-appointments')"
             >View Appointments</a
           >
         </li>
         <li>
-          <a href="#" onclick="showTab('set-schedules')">Set Schedules</a>
+          <a href="#" data-roles="superadmin staff" onclick="showTab('set-schedules')">Set Schedules</a>
         </li>
       </ul>
       <span class="section-label">Patients</span>
       <ul>
         <li>
-          <a href="#" onclick="showTab('patient-info')">Patient Information</a>
+          <a href="#" data-roles="superadmin doctor" onclick="showTab('patient-info')">Patient Information</a>
         </li>
         <li>
-          <a href="#" onclick="showTab('dental-records')">Dental Records</a>
+          <a href="#" data-roles="superadmin doctor" onclick="showTab('dental-records')">Dental Records</a>
         </li>
       </ul>
       <span class="section-label">Finance &amp; Logs</span>
       <ul>
         <li>
-          <a href="#" onclick="showTab('billing')">Billing &amp; Payments</a>
+          <a href="#" data-roles="superadmin staff" onclick="showTab('billing')">Billing &amp; Payments</a>
         </li>
-        <li><a href="#" onclick="showTab('audit-logs')">Audit Logs</a></li>
+        <li><a href="#" data-roles="superadmin doctor staff" onclick="showTab('audit-logs')">Audit Logs</a></li>
       </ul>
-      <span class="section-label">Staff</span>
+      <span class="section-label">Access Management</span>
       <ul>
         <li>
-          <a href="#" onclick="showTab('doctor-profiles')">Doctor Profiles</a>
+          <a href="#" data-roles="superadmin" onclick="showTab('doctor-profiles')">User Roles</a>
         </li>
       </ul>
     </div>
@@ -66,7 +66,7 @@
     <div class="content">
       <div id="tab-dashboard">
         <h2>Dashboard</h2>
-        <p id="welcome-date">Welcome back, Admin.</p>
+        <p id="welcome-date">Welcome back.</p>
 
         <div class="stats">
           <div class="stat-card">
@@ -812,7 +812,8 @@
           <option value="UPDATE_BILLING">Update billing</option>
           <option value="RECORD_PAYMENT">Record payment</option>
           <option value="UPDATE_PAYMENT_STATUS">Update payment status</option>
-          <option value="PROMOTE_USER">Promote user</option>
+          <option value="ASSIGN_ROLE">Assign role</option>
+          <option value="PROMOTE_USER">Promote user (legacy)</option>
           <option value="UPDATE_PATIENT">Update patient</option>
         </select>
 
@@ -888,7 +889,7 @@
         </dialog>
       </div>
       <div id="tab-doctor-profiles" style="display: none">
-        <h2>Doctor Profiles</h2>
+        <h2>User Roles &amp; Profiles</h2>
 
         <div class="row" style="margin-bottom: 16px">
           <div class="card" style="flex: 1">
@@ -920,10 +921,10 @@
         </div>
 
         <div class="card">
-          <h2>Promote Existing User</h2>
+          <h2>Assign Staff or Doctor Role</h2>
           <p>
-            Search a user, select the profile type, then promote the user to
-            admin and generate their staff/doctor profile.
+            Search a patient account, select its role, and create the matching
+            staff or doctor profile. Only superadmins can perform this action.
           </p>
 
           <div class="field" style="position: relative">
@@ -1018,7 +1019,7 @@
 
           <input type="hidden" id="selected-user-id" value="" />
           <div class="actions">
-            <button id="promote-user-button" type="button">Promote User</button>
+            <button id="promote-user-button" type="button">Assign Role</button>
           </div>
           <div id="promote-result" class="result"></div>
         </div>

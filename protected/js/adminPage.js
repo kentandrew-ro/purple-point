@@ -1,4 +1,45 @@
+const ROLE_TABS = Object.freeze({
+  superadmin: new Set([
+    "dashboard",
+    "view-appointments",
+    "set-schedules",
+    "patient-info",
+    "dental-records",
+    "billing",
+    "audit-logs",
+    "doctor-profiles",
+  ]),
+  doctor: new Set([
+    "dashboard",
+    "view-appointments",
+    "patient-info",
+    "dental-records",
+    "audit-logs",
+  ]),
+  staff: new Set([
+    "dashboard",
+    "view-appointments",
+    "set-schedules",
+    "billing",
+    "audit-logs",
+  ]),
+});
+
+let managementRole = null;
+
+function normalizeManagementRole(role) {
+  return role === "admin" ? "superadmin" : role;
+}
+
+function roleDisplayName(role) {
+  if (role === "superadmin") return "Superadmin";
+  if (role === "doctor") return "Doctor";
+  if (role === "staff") return "Staff";
+  return "Management";
+}
+
 function showTab(name) {
+  if (!managementRole || !ROLE_TABS[managementRole]?.has(name)) return;
   document
     .querySelectorAll(".content > div")
     .forEach((el) => (el.style.display = "none"));
@@ -6,17 +47,56 @@ function showTab(name) {
   if (tab) tab.style.display = "block";
   if (name === "billing") loadBillings();
   if (name === "audit-logs") loadAuditLogs();
+  if (name === "doctor-profiles") loadDoctorStaffSummaries();
 }
 
-const now = new Date();
-document.getElementById("welcome-date").textContent =
-  "Welcome back, Admin. " +
-  now.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+async function initializeRoleInterface() {
+  try {
+    const response = await fetch("/api/me");
+    if (!response.ok) throw new Error("Unable to load your account.");
+    const user = await response.json();
+    managementRole = normalizeManagementRole(user.role);
+    const allowedTabs = ROLE_TABS[managementRole];
+    if (!allowedTabs) {
+      window.location.replace("/patientPage.html");
+      return;
+    }
+
+    document.body.dataset.role = managementRole;
+    document.querySelectorAll(".sidebar a[data-roles]").forEach((link) => {
+      const allowedRoles = (link.dataset.roles || "").split(/\s+/);
+      link.closest("li").hidden = !allowedRoles.includes(managementRole);
+    });
+    document.querySelectorAll(".sidebar .section-label").forEach((label) => {
+      const list = label.nextElementSibling;
+      const hasVisibleLink = list && [...list.querySelectorAll("li")].some(
+        (item) => !item.hidden,
+      );
+      label.hidden = !hasVisibleLink;
+      if (list) list.hidden = !hasVisibleLink;
+    });
+
+    const displayRole = roleDisplayName(managementRole);
+    const portalLabel = document.getElementById("portal-role-label");
+    if (portalLabel) portalLabel.textContent = displayRole;
+    document.title = `${displayRole} Dashboard - PurplePoint`;
+    const now = new Date();
+    document.getElementById("welcome-date").textContent =
+      `Welcome back, ${displayRole}. ` +
+      now.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+
+    showTab("dashboard");
+    await Promise.all([loadStats(), loadSchedule()]);
+  } catch (error) {
+    console.error(error);
+    window.location.replace("/login.html");
+  }
+}
 
 async function loadStats() {
   try {
@@ -95,8 +175,7 @@ async function signOut() {
   }
 }
 
-loadStats();
-loadSchedule();
+initializeRoleInterface();
 
 const STATUS_COLORS = {
   completed: "#bbdefb",
@@ -710,7 +789,7 @@ async function promoteSelectedUser() {
 
     showResult(
       resultBox,
-      `User promoted successfully. New ${data.role} profile created: ID ${data.doctor_id || data.staff_id}.`,
+      `Role assigned successfully. New ${data.role} profile created: ID ${data.doctor_id || data.staff_id}.`,
     );
     loadDoctorStaffSummaries();
     document.getElementById("user-search").value = "";
@@ -1130,7 +1209,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  loadDoctorStaffSummaries();
   initDentalRecordsTab();
   initBillingTab();
   initAuditLogsTab();

@@ -548,7 +548,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const meRes = await fetch("/api/me");
     if (meRes.ok) {
       currentUser = await meRes.json();
-      if (currentUser.role === "admin") {
+      if (["superadmin", "staff", "admin"].includes(currentUser.role)) {
         const field = document.getElementById("patient-id-field");
         if (field) field.style.display = "block";
         const input = field?.querySelector("input");
@@ -556,7 +556,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const statusField = document.getElementById("appointment-status-field");
         if (statusField) statusField.style.display = "block";
-      } else {
+      } else if (currentUser.role === "patient") {
         appointmentDraftKey = `purplepoint:appointment-draft:${currentUser.userId}`;
 
         const profileResponse = await fetch("/api/patients/me");
@@ -567,7 +567,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }
   } catch {
-    if (currentUser?.role !== "admin") {
+    if (!currentUser || currentUser.role === "patient") {
       blockAppointmentBookingUntilProfileIsComplete();
     }
   }
