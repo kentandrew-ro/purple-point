@@ -87,31 +87,7 @@ async function loadAppointments() {
     empty.style.display = "none";
     table.style.display = "table";
 
-    let currentDate = null;
-
     upcoming.forEach((appt) => {
-      const apptDate = appt.appointment_date;
-
-      if (currentDate !== apptDate) {
-        currentDate = apptDate;
-        const dateHeader = document.createElement("tr");
-        dateHeader.className = "date-header";
-        const dateObj = new Date(`${apptDate}T00:00:00`);
-        const dateLabel = dateObj.toLocaleDateString("en-US", {
-          weekday: "long",
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-        });
-        const dateCell = document.createElement("td");
-        dateCell.colSpan = 5;
-        dateCell.style.cssText =
-          "font-weight:700;font-size:16px;padding:12px 0;border-top:2px solid #333;background:#f5f5f5;";
-        dateCell.textContent = dateLabel;
-        dateHeader.appendChild(dateCell);
-        body.appendChild(dateHeader);
-      }
-
       const tr = document.createElement("tr");
       tr.dataset.id = appt.appointment_id;
       const dateTimeCell = document.createElement("td");

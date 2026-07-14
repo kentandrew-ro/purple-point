@@ -31,6 +31,15 @@ const ROLE_TABS = Object.freeze({
 });
 
 let managementRole = null;
+const SCHEDULE_WEEKDAYS = Object.freeze([
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+]);
 
 function normalizeManagementRole(role) {
   return role === "admin" ? "superadmin" : role;
@@ -69,11 +78,15 @@ function configureScheduleInterface() {
   const heading = document.getElementById("clinic-hours-heading");
   const description = document.getElementById("clinic-hours-description");
   const tabDescription = document.getElementById("schedule-tab-description");
+  const currentScheduleSection = document.getElementById(
+    "doctor-current-schedule-section",
+  );
 
   if (appointmentButton) appointmentButton.hidden = false;
   if (doctorHoursButton) doctorHoursButton.hidden = isStaff;
   if (staffShiftButton) staffShiftButton.hidden = !isStaff;
   if (dentistField) dentistField.hidden = isDoctor;
+  if (currentScheduleSection) currentScheduleSection.hidden = !isDoctor;
 
   if (isDoctor) {
     if (heading) heading.textContent = "My Clinic Hours";
@@ -88,6 +101,7 @@ function configureScheduleInterface() {
     if (appointmentCard) appointmentCard.style.display = "none";
     if (doctorHoursCard) doctorHoursCard.style.display = "block";
     if (staffShiftCard) staffShiftCard.style.display = "none";
+    loadDoctorCurrentSchedule();
     return;
   }
 
@@ -1157,6 +1171,72 @@ function showResult(el, message) {
   el.textContent = message;
 }
 
+function formatDoctorScheduleTime(value) {
+  const match = String(value || "").match(/^(\d{2}):(\d{2})/);
+  if (!match) return value || "—";
+  const hour = Number(match[1]);
+  const minute = match[2];
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minute} ${hour >= 12 ? "PM" : "AM"}`;
+}
+
+function renderDoctorCurrentSchedule(schedules) {
+  const content = document.getElementById("doctor-current-schedule-content");
+  if (!content) return;
+
+  const schedulesByDay = new Map(
+    SCHEDULE_WEEKDAYS.map((day) => [day, []]),
+  );
+  (Array.isArray(schedules) ? schedules : []).forEach((schedule) => {
+    if (schedulesByDay.has(schedule.day_of_week)) {
+      schedulesByDay.get(schedule.day_of_week).push(schedule);
+    }
+  });
+
+  content.innerHTML = `
+    <table class="doctor-current-schedule__table">
+      <thead>
+        <tr>
+          <th scope="col">Day</th>
+          <th scope="col">Current availability</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${SCHEDULE_WEEKDAYS.map((day) => {
+          const daySchedules = schedulesByDay.get(day);
+          const availability = daySchedules.length
+            ? daySchedules
+                .map(
+                  (schedule) =>
+                    `<span class="schedule-time-range">${escapeHtml(formatDoctorScheduleTime(schedule.start_time))}–${escapeHtml(formatDoctorScheduleTime(schedule.end_time))}</span>`,
+                )
+                .join("")
+            : '<span class="schedule-not-set">Not scheduled</span>';
+          return `<tr><th scope="row">${day}</th><td>${availability}</td></tr>`;
+        }).join("")}
+      </tbody>
+    </table>`;
+}
+
+async function loadDoctorCurrentSchedule() {
+  const section = document.getElementById("doctor-current-schedule-section");
+  const content = document.getElementById("doctor-current-schedule-content");
+  if (!section || !content || managementRole !== "doctor") return;
+
+  section.hidden = false;
+  content.textContent = "Loading current schedule...";
+  try {
+    const response = await fetch("/api/dentist-schedule/me");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Unable to load your current schedule.");
+    }
+    renderDoctorCurrentSchedule(data.schedules);
+  } catch (error) {
+    content.textContent = error.message || "Unable to load your current schedule.";
+  }
+}
+
 async function submitClinicHoursForm(e) {
   e.preventDefault();
   const form = e.target;
@@ -1203,6 +1283,7 @@ async function submitClinicHoursForm(e) {
       `Doctor availability saved for ${data.schedule_count} day${data.schedule_count === 1 ? "" : "s"}: ${data.added_days.join(", ")}.`,
     );
     form.reset();
+    if (managementRole === "doctor") await loadDoctorCurrentSchedule();
   } catch (err) {
     showResult(resultBox, `Error: ${err?.message || "Unknown error"}`);
   } finally {
@@ -1376,6 +1457,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (appointmentCard) appointmentCard.style.display = "none";
     if (clinicHoursCard) clinicHoursCard.style.display = "block";
     if (staffShiftCard) staffShiftCard.style.display = "none";
+    if (managementRole === "doctor") loadDoctorCurrentSchedule();
   }
 
   function showStaffShiftForm() {
@@ -1398,6 +1480,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const staffForm = document.getElementById("staff-form");
   const clinicHoursForm = document.getElementById("clinic-hours-form");
   const staffShiftForm = document.getElementById("staff-shift-form");
+  const refreshDoctorSchedule = document.getElementById(
+    "refresh-doctor-schedule",
+  );
 
   if (doctorForm) doctorForm.addEventListener("submit", submitDoctorForm);
   if (staffForm) staffForm.addEventListener("submit", submitStaffForm);
@@ -1405,6 +1490,8 @@ document.addEventListener("DOMContentLoaded", () => {
     clinicHoursForm.addEventListener("submit", submitClinicHoursForm);
   if (staffShiftForm)
     staffShiftForm.addEventListener("submit", submitStaffShiftForm);
+  if (refreshDoctorSchedule)
+    refreshDoctorSchedule.addEventListener("click", loadDoctorCurrentSchedule);
 
   const userSearchInput = document.getElementById("user-search");
   const userSuggestions = document.getElementById("user-suggestions");

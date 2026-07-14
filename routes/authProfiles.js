@@ -925,6 +925,45 @@ function registerAuthProfileRoutes(
     }
   });
 
+  app.get("/api/dentist-schedule/me", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "Not logged in" });
+    }
+    if (!requireRole(req, res, ["doctor"])) return;
+
+    try {
+      const [dentists] = await pool.execute(
+        "SELECT dentist_id FROM dentist WHERE user_id = ?",
+        [req.session.userId],
+      );
+      if (!dentists.length) {
+        return res
+          .status(404)
+          .json({ ok: false, error: "Doctor profile not found." });
+      }
+
+      const [schedules] = await pool.execute(
+        `SELECT schedule_id, day_of_week,
+                TIME_FORMAT(start_time, '%H:%i') AS start_time,
+                TIME_FORMAT(end_time, '%H:%i') AS end_time
+         FROM dentist_schedule
+         WHERE dentist_id = ?
+           AND is_active = TRUE
+         ORDER BY FIELD(
+           day_of_week,
+           'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+           'Friday', 'Saturday', 'Sunday'
+         ), start_time, end_time`,
+        [dentists[0].dentist_id],
+      );
+
+      return res.json({ ok: true, schedules });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    }
+  });
+
   app.post("/api/dentist-schedule", async (req, res) => {
     if (!req.session.userId) {
       return res.status(401).json({ error: "Not logged in" });

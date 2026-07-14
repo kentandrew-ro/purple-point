@@ -814,6 +814,59 @@ body.admin-layout {
   accent-color: var(--purple);
   box-shadow: none;
 }
+.doctor-current-schedule {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid #d9c9ef;
+  border-radius: var(--radius-small);
+  background: var(--purple-pale);
+}
+.doctor-current-schedule[hidden] {
+  display: none;
+}
+.doctor-current-schedule__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.doctor-current-schedule__heading h3,
+.doctor-current-schedule__heading p {
+  margin: 0;
+}
+.doctor-current-schedule__heading p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.doctor-current-schedule__heading button {
+  padding: 8px 12px;
+}
+.doctor-current-schedule__table {
+  margin: 0 !important;
+  box-shadow: none !important;
+}
+.doctor-current-schedule__table th,
+.doctor-current-schedule__table td {
+  padding: 9px 12px;
+}
+.schedule-time-range {
+  display: inline-block;
+  margin: 2px 8px 2px 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--purple);
+  font-weight: 700;
+}
+.schedule-not-set {
+  color: var(--muted);
+  font-style: italic;
+}
+.schedule-form-title {
+  margin: 20px 0 12px;
+}
 .tooth-chart-record-summary {
   margin: 10px 0;
   padding: 10px 12px;

@@ -232,6 +232,30 @@
             Select one or more regular days and apply the same availability
             hours to all of them.
           </p>
+          <section
+            id="doctor-current-schedule-section"
+            class="doctor-current-schedule"
+            hidden
+            aria-labelledby="doctor-current-schedule-heading"
+          >
+            <div class="doctor-current-schedule__heading">
+              <div>
+                <h3 id="doctor-current-schedule-heading">Current Schedule</h3>
+                <p>These are your active appointment availability hours.</p>
+              </div>
+              <button type="button" id="refresh-doctor-schedule">
+                Refresh
+              </button>
+            </div>
+            <div
+              id="doctor-current-schedule-content"
+              class="doctor-current-schedule__content"
+              aria-live="polite"
+            >
+              Loading current schedule...
+            </div>
+          </section>
+          <h3 class="schedule-form-title">Set Schedule</h3>
           <form id="clinic-hours-form">
             <div
               id="clinic-dentist-field"
