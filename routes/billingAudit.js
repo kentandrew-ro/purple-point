@@ -28,7 +28,7 @@ function registerBillingAuditRoutes(app) {
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.min(
       100,
-      Math.max(10, Number.parseInt(req.query.limit, 10) || 25),
+      Math.max(1, Number.parseInt(req.query.limit, 10) || 8),
     );
 
     if ((dateFrom && !isIsoDate(dateFrom)) || (dateTo && !isIsoDate(dateTo))) {
@@ -483,6 +483,89 @@ function registerBillingAuditRoutes(app) {
       return res.json({
         ok: true,
         message: "Billing statement updated.",
+        billing_status: effectiveBillingStatus,
+      });
+    } catch (err) {
+      if (conn) await conn.rollback();
+      console.error(err);
+      return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    } finally {
+      if (conn) conn.release();
+    }
+  });
+
+  app.patch("/api/billings/:id/status", async (req, res) => {
+    if (!requireRole(req, res, ["superadmin", "staff"])) return;
+
+    const billingId = Number.parseInt(req.params.id, 10);
+    const billingStatus = (
+      requireField(req.body, "billing_status") || ""
+    ).toLowerCase();
+
+    if (!billingId) {
+      return res.status(400).json({ ok: false, error: "Invalid billing ID." });
+    }
+    if (!BILLING_STATUSES.includes(billingStatus)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Please select a valid billing status." });
+    }
+
+    let conn;
+    try {
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
+
+      const [billingRows] = await conn.execute(
+        `SELECT total_amount, billing_status
+         FROM billing
+         WHERE billing_id = ?
+         FOR UPDATE`,
+        [billingId],
+      );
+      if (!billingRows.length) {
+        await conn.rollback();
+        return res
+          .status(404)
+          .json({ ok: false, error: "Billing statement not found." });
+      }
+
+      const [[paymentTotal]] = await conn.execute(
+        `SELECT COALESCE(SUM(amount_paid), 0) AS amount_paid
+         FROM payments
+         WHERE billing_id = ? AND payment_status = 'completed'`,
+        [billingId],
+      );
+      const effectiveBillingStatus = resolveBillingStatus(
+        billingRows[0].total_amount,
+        paymentTotal.amount_paid,
+        billingStatus,
+      );
+
+      await conn.execute(
+        "UPDATE billing SET billing_status = ? WHERE billing_id = ?",
+        [effectiveBillingStatus, billingId],
+      );
+      await createAuditLog(conn, req, {
+        action: "UPDATE_BILLING_STATUS",
+        entityType: "billing",
+        entityId: billingId,
+        description: `Updated billing status for statement #${billingId}`,
+        oldValues: {
+          billing_status: billingRows[0].billing_status,
+        },
+        newValues: {
+          billing_status: effectiveBillingStatus,
+        },
+      });
+      await conn.commit();
+
+      return res.json({
+        ok: true,
+        message:
+          effectiveBillingStatus === "paid" && billingStatus !== "paid"
+            ? "Billing status updated to Paid because the balance is zero."
+            : "Billing status updated.",
         billing_status: effectiveBillingStatus,
       });
     } catch (err) {

@@ -711,6 +711,153 @@ body.admin-layout {
   border-radius: var(--radius);
   overflow: hidden;
 }
+.audit-page > h2 {
+  margin-bottom: 12px;
+}
+.audit-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.audit-search-field,
+.audit-filter-field {
+  display: grid;
+  gap: 4px;
+}
+.audit-filter-panel {
+  position: relative;
+  padding-top: 22px;
+}
+.audit-filter-panel > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 10px 13px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-small);
+  color: var(--purple);
+  background: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+.audit-filter-panel > summary::-webkit-details-marker {
+  display: none;
+}
+.audit-filter-panel > summary::after {
+  content: "+";
+  font-size: 1.2rem;
+  line-height: 1;
+}
+.audit-filter-panel[open] > summary {
+  border-color: var(--purple-light);
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+  background: var(--purple-pale);
+}
+.audit-filter-panel[open] > summary::after {
+  content: "-";
+}
+.audit-filter-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-small) var(--radius-small);
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+.audit-filter-content input,
+.audit-filter-content select {
+  min-height: 38px;
+  padding: 7px 10px;
+}
+.audit-filter-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.audit-filter-actions button {
+  min-height: 36px;
+  padding: 7px 14px;
+}
+#audit-list-message:empty {
+  display: none;
+}
+.audit-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-small);
+  box-shadow: var(--shadow);
+}
+.admin-layout .content .audit-log-table {
+  min-width: 900px;
+  margin-top: 0;
+  table-layout: fixed;
+  box-shadow: none;
+}
+.audit-log-table th {
+  padding: 8px 10px;
+}
+.audit-log-table td {
+  height: 38px;
+  padding: 7px 10px;
+  overflow: hidden;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.audit-log-table th:nth-child(1) {
+  width: 155px;
+}
+.audit-log-table th:nth-child(2) {
+  width: 135px;
+}
+.audit-log-table th:nth-child(3) {
+  width: 85px;
+}
+.audit-log-table th:nth-child(4) {
+  width: 155px;
+}
+.audit-log-table th:nth-child(5) {
+  width: 110px;
+}
+.audit-log-table th:nth-child(7) {
+  width: 72px;
+}
+.audit-log-table .audit-view-button {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 0.76rem;
+}
+.audit-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+.audit-pagination p {
+  margin: 0;
+  font-size: 0.82rem;
+}
+.audit-pagination-actions {
+  display: flex;
+  gap: 8px;
+}
+.audit-pagination-actions button {
+  min-height: 34px;
+  padding: 6px 13px;
+  font-size: 0.8rem;
+}
 .suggestions {
   position: absolute;
   z-index: 20;
@@ -832,6 +979,16 @@ dialog form {
   .admin-layout .stats {
     grid-template-columns: 1fr;
   }
+  .audit-toolbar {
+    grid-template-columns: 1fr;
+  }
+  .audit-filter-panel {
+    padding-top: 0;
+  }
+  .audit-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 @media (max-width: 480px) {
@@ -847,6 +1004,12 @@ dialog form {
   .topbar-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+  .audit-filter-content {
+    grid-template-columns: 1fr;
+  }
+  .audit-filter-actions {
+    grid-column: auto;
   }
 }
 body.admin-layout[data-role="loading"] .sidebar {

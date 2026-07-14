@@ -2237,9 +2237,13 @@ function renderBillingPaymentHistory(payments, billingStatus) {
 
 async function openBillingStatement(billingId) {
   const dialog = document.getElementById("billing-view-dialog");
+  const statusOnlyMessage = document.getElementById(
+    "billing-status-only-message",
+  );
   const updateError = document.getElementById("billing-update-error");
   const paymentError = document.getElementById("billing-payment-error");
   if (!dialog) return;
+  if (statusOnlyMessage) statusOnlyMessage.textContent = "";
   if (updateError) updateError.textContent = "";
   if (paymentError) paymentError.textContent = "";
 
@@ -2261,6 +2265,24 @@ async function openBillingStatement(billingId) {
     document.getElementById("billing-view-balance").textContent = formatPeso(
       billing.balance,
     );
+    const hasZeroBalance = Math.abs(Number(billing.balance)) < 0.005;
+    const statusOnlySelect = document.getElementById(
+      "billing-status-only-select",
+    );
+    const statusOnlyHelp = document.getElementById("billing-status-only-help");
+    if (statusOnlySelect) {
+      Array.from(statusOnlySelect.options).forEach((option) => {
+        option.disabled = hasZeroBalance && option.value !== "paid";
+      });
+      statusOnlySelect.value = hasZeroBalance
+        ? "paid"
+        : billing.billing_status;
+    }
+    if (statusOnlyHelp) {
+      statusOnlyHelp.textContent = hasZeroBalance
+        ? "The balance is zero, so you can mark this statement as Paid without entering payment details again."
+        : "Use this to correct the billing status without entering another payment or changing the statement details.";
+    }
     document.getElementById("billing-update-id").value = billing.billing_id;
     document.getElementById("billing-update-date").value = billing.billing_date;
     document.getElementById("billing-update-total").value = Number(
@@ -2304,6 +2326,7 @@ function initBillingTab() {
   const treatmentSelect = document.getElementById("billing-treatment-select");
   const viewDialog = document.getElementById("billing-view-dialog");
   const paymentHistory = document.getElementById("billing-payment-history");
+  const statusOnlyForm = document.getElementById("billing-status-only-form");
   const updateForm = document.getElementById("billing-update-form");
   const paymentForm = document.getElementById("billing-payment-form");
   const updateTotal = document.getElementById("billing-update-total");
@@ -2462,6 +2485,41 @@ function initBillingTab() {
     });
   }
 
+  if (statusOnlyForm) {
+    statusOnlyForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const message = document.getElementById("billing-status-only-message");
+      const billingId = document.getElementById("billing-update-id").value;
+      const submitButton = statusOnlyForm.querySelector("button[type='submit']");
+      message.textContent = "";
+      submitButton.disabled = true;
+
+      try {
+        const result = await billingFetchJson(
+          `/api/billings/${encodeURIComponent(billingId)}/status`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              billing_status: document.getElementById(
+                "billing-status-only-select",
+              ).value,
+            }),
+          },
+        );
+        await openBillingStatement(billingId);
+        await loadBillings();
+        await loadStats();
+        document.getElementById("billing-status-only-message").textContent =
+          result.message;
+      } catch (err) {
+        message.textContent = err.message;
+      } finally {
+        submitButton.disabled = false;
+      }
+    });
+  }
+
   if (paymentForm) {
     paymentForm.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -2614,7 +2672,7 @@ async function loadAuditLogs(page = auditCurrentPage) {
 
   const params = new URLSearchParams({
     page: String(auditCurrentPage),
-    limit: "25",
+    limit: "8",
   });
   const filters = {
     search: document.getElementById("audit-search")?.value.trim(),
@@ -2652,7 +2710,7 @@ async function loadAuditLogs(page = auditCurrentPage) {
 
     const summary = document.getElementById("audit-pagination-summary");
     if (summary) {
-      summary.textContent = `Page ${auditCurrentPage} of ${auditTotalPages} · ${data.pagination?.total || 0} logs`;
+      summary.textContent = `Page ${auditCurrentPage} of ${auditTotalPages} | ${data.pagination?.total || 0} logs`;
     }
     const previous = document.getElementById("audit-previous-page");
     const next = document.getElementById("audit-next-page");
@@ -2713,6 +2771,12 @@ function initAuditLogsTab() {
     .getElementById("audit-apply-filters")
     ?.addEventListener("click", () => {
       loadAuditLogs(1);
+      document.getElementById("audit-filter-panel")?.removeAttribute("open");
+    });
+  document
+    .getElementById("audit-search")
+    ?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") loadAuditLogs(1);
     });
   document
     .getElementById("audit-reset-filters")
@@ -2727,6 +2791,7 @@ function initAuditLogsTab() {
         document.getElementById(id).value = "";
       });
       loadAuditLogs(1);
+      document.getElementById("audit-filter-panel")?.removeAttribute("open");
     });
   document
     .getElementById("audit-previous-page")

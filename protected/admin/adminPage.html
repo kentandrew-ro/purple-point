@@ -729,6 +729,25 @@
             <strong>Balance:</strong> <span id="billing-view-balance"></span>
           </p>
 
+          <h4>Update Billing Status Only</h4>
+          <p id="billing-status-only-help">
+            Use this to correct the billing status without entering another
+            payment or changing the statement details.
+          </p>
+          <form id="billing-status-only-form">
+            <p>
+              <label for="billing-status-only-select">Billing status</label
+              ><br />
+              <select id="billing-status-only-select" required>
+                <option value="unpaid">Unpaid</option>
+                <option value="partial">Partial</option>
+                <option value="paid">Paid</option>
+              </select>
+            </p>
+            <p id="billing-status-only-message" aria-live="polite"></p>
+            <button type="submit">Update Status</button>
+          </form>
+
           <h4>Update Statement</h4>
           <form id="billing-update-form">
             <input id="billing-update-id" type="hidden" />
@@ -846,81 +865,129 @@
           <p><button type="button" id="billing-view-close">Close</button></p>
         </dialog>
       </div>
-      <div id="tab-audit-logs" style="display: none">
+      <div id="tab-audit-logs" class="audit-page" style="display: none">
         <h2>Audit Logs</h2>
 
-        <label for="audit-search">Search</label>
-        <input
-          id="audit-search"
-          type="search"
-          placeholder="Actor, description, or record ID"
-        />
+        <div class="audit-toolbar">
+          <div class="audit-search-field">
+            <label for="audit-search">Search</label>
+            <input
+              id="audit-search"
+              type="search"
+              placeholder="Actor, description, or record ID"
+            />
+          </div>
 
-        <label for="audit-action-filter">Action</label>
-        <select id="audit-action-filter">
-          <option value="">All actions</option>
-          <option value="CREATE_APPOINTMENT">Create appointment</option>
-          <option value="CANCEL_APPOINTMENT">Cancel appointment</option>
-          <option value="UPDATE_APPOINTMENT_STATUS">
-            Update appointment status
-          </option>
-          <option value="UPDATE_DENTIST_SCHEDULE">
-            Update dentist schedule
-          </option>
-          <option value="CREATE_DENTAL_RECORD">Create dental record</option>
-          <option value="UPDATE_DENTAL_RECORD">Update dental record</option>
-          <option value="CREATE_BILLING">Create billing</option>
-          <option value="UPDATE_BILLING">Update billing</option>
-          <option value="RECORD_PAYMENT">Record payment</option>
-          <option value="UPDATE_PAYMENT_STATUS">Update payment status</option>
-          <option value="ASSIGN_ROLE">Assign role</option>
-          <option value="PROMOTE_USER">Promote user (legacy)</option>
-          <option value="UPDATE_PATIENT">Update patient</option>
-          <option value="UPDATE_PATIENT_STATUS">Update patient status</option>
-        </select>
+          <details class="audit-filter-panel" id="audit-filter-panel">
+            <summary>Filter options</summary>
+            <div class="audit-filter-content">
+              <div class="audit-filter-field">
+                <label for="audit-action-filter">Action</label>
+                <select id="audit-action-filter">
+                  <option value="">All actions</option>
+                  <option value="CREATE_APPOINTMENT">
+                    Create appointment
+                  </option>
+                  <option value="CANCEL_APPOINTMENT">
+                    Cancel appointment
+                  </option>
+                  <option value="UPDATE_APPOINTMENT_STATUS">
+                    Update appointment status
+                  </option>
+                  <option value="UPDATE_DENTIST_SCHEDULE">
+                    Update dentist schedule
+                  </option>
+                  <option value="CREATE_DENTAL_RECORD">
+                    Create dental record
+                  </option>
+                  <option value="UPDATE_DENTAL_RECORD">
+                    Update dental record
+                  </option>
+                  <option value="CREATE_BILLING">Create billing</option>
+                  <option value="UPDATE_BILLING">Update billing</option>
+                  <option value="UPDATE_BILLING_STATUS">
+                    Update billing status
+                  </option>
+                  <option value="RECORD_PAYMENT">Record payment</option>
+                  <option value="UPDATE_PAYMENT_STATUS">
+                    Update payment status
+                  </option>
+                  <option value="ASSIGN_ROLE">Assign role</option>
+                  <option value="PROMOTE_USER">Promote user (legacy)</option>
+                  <option value="UPDATE_PATIENT">Update patient</option>
+                  <option value="UPDATE_PATIENT_STATUS">
+                    Update patient status
+                  </option>
+                </select>
+              </div>
 
-        <label for="audit-entity-filter">Record type</label>
-        <select id="audit-entity-filter">
-          <option value="">All record types</option>
-          <option value="appointment">Appointment</option>
-          <option value="dentist_schedule">Dentist schedule</option>
-          <option value="dental_record">Dental record</option>
-          <option value="billing">Billing</option>
-          <option value="payment">Payment</option>
-          <option value="user">User</option>
-          <option value="patient">Patient</option>
-        </select>
+              <div class="audit-filter-field">
+                <label for="audit-entity-filter">Record type</label>
+                <select id="audit-entity-filter">
+                  <option value="">All record types</option>
+                  <option value="appointment">Appointment</option>
+                  <option value="dentist_schedule">Dentist schedule</option>
+                  <option value="dental_record">Dental record</option>
+                  <option value="billing">Billing</option>
+                  <option value="payment">Payment</option>
+                  <option value="user">User</option>
+                  <option value="patient">Patient</option>
+                </select>
+              </div>
 
-        <label for="audit-date-from">From</label>
-        <input id="audit-date-from" type="date" />
-        <label for="audit-date-to">To</label>
-        <input id="audit-date-to" type="date" />
-        <button type="button" id="audit-apply-filters">Apply Filters</button>
-        <button type="button" id="audit-reset-filters">Reset</button>
+              <div class="audit-filter-field">
+                <label for="audit-date-from">From</label>
+                <input id="audit-date-from" type="date" />
+              </div>
+              <div class="audit-filter-field">
+                <label for="audit-date-to">To</label>
+                <input id="audit-date-to" type="date" />
+              </div>
+              <div class="audit-filter-actions">
+                <button type="button" id="audit-apply-filters">
+                  Apply Filters
+                </button>
+                <button
+                  type="button"
+                  id="audit-reset-filters"
+                  class="secondary"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          </details>
+        </div>
 
         <p id="audit-list-message" aria-live="polite"></p>
-        <table>
-          <thead>
-            <tr>
-              <th>Date and Time</th>
-              <th>Actor</th>
-              <th>Type</th>
-              <th>Action</th>
-              <th>Record</th>
-              <th>Description</th>
-              <th>Details</th>
-            </tr>
-          </thead>
-          <tbody id="audit-table-body">
-            <tr>
-              <td colspan="7">Open this tab to load audit logs.</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="audit-table-scroll">
+          <table class="audit-log-table">
+            <thead>
+              <tr>
+                <th>Date and Time</th>
+                <th>Actor</th>
+                <th>Type</th>
+                <th>Action</th>
+                <th>Record</th>
+                <th>Description</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="audit-table-body">
+              <tr>
+                <td colspan="7">Open this tab to load audit logs.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-        <p id="audit-pagination-summary"></p>
-        <button type="button" id="audit-previous-page">Previous</button>
-        <button type="button" id="audit-next-page">Next</button>
+        <div class="audit-pagination">
+          <p id="audit-pagination-summary"></p>
+          <div class="audit-pagination-actions">
+            <button type="button" id="audit-previous-page">Previous</button>
+            <button type="button" id="audit-next-page">Next</button>
+          </div>
+        </div>
 
         <dialog id="audit-details-dialog">
           <h3>Audit Log <span id="audit-detail-id"></span></h3>
