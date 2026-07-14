@@ -10,6 +10,7 @@ const {
   APPOINTMENT_TYPES,
   doctorMatchesAppointmentType,
   getDoctorProfileValidationError,
+  isValidEmail,
   isIsoDate,
   parsePositiveInteger,
   validateGender,
@@ -130,7 +131,7 @@ function registerDentalAdminRoutes(app) {
   app.get("/api/patients/:id", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (!requireRole(req, res, ["superadmin", "doctor"])) return;
+    if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
 
     const patientId = parseInt(req.params.id, 10);
     if (!patientId) {
@@ -141,7 +142,8 @@ function registerDentalAdminRoutes(app) {
       const [rows] = await pool.execute(
         `SELECT
            p.patient_id, p.user_id, u.first_name, u.last_name,
-           p.date_of_birth, p.gender, u.contact_number,
+           DATE_FORMAT(p.date_of_birth, '%Y-%m-%d') AS date_of_birth,
+           p.gender, u.contact_number,
            p.house_no, p.street, p.barangay, p.city, p.zip_code,
            p.blood_type, p.created_at, u.email,
            DATE_FORMAT(pr.date_registered, '%Y-%m-%d') AS date_registered,
@@ -175,6 +177,165 @@ function registerDentalAdminRoutes(app) {
     } catch (err) {
       console.error(err);
       return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
+    }
+  });
+
+  app.patch("/api/patients/:id/information", async (req, res) => {
+    if (!req.session.userId)
+      return res.status(401).json({ error: "Not logged in" });
+    if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
+
+    const patientId = parseInt(req.params.id, 10);
+    if (!patientId) {
+      return res.status(400).json({ ok: false, error: "Invalid patient ID." });
+    }
+
+    const body = req.body || {};
+    const editableFields = {
+      email: requireField(body, "email")?.toLowerCase(),
+      contact_number: requireField(body, "contact_number"),
+      house_no: requireField(body, "house_no"),
+      street: requireField(body, "street"),
+      barangay: requireField(body, "barangay"),
+      city: requireField(body, "city"),
+      zip_code: requireField(body, "zip_code"),
+      emergency_contact_name: requireField(body, "emergency_contact_name"),
+      emergency_contact_number: requireField(
+        body,
+        "emergency_contact_number",
+      ),
+    };
+    const missing = Object.entries(editableFields)
+      .filter(([, value]) => !value)
+      .map(([field]) => field);
+    if (missing.length) {
+      return res.status(400).json({
+        ok: false,
+        error: `Missing field(s): ${missing.join(", ")}`,
+      });
+    }
+    if (!isValidEmail(editableFields.email)) {
+      return res.status(400).json({
+        ok: false,
+        error:
+          "Enter a valid email address with @ and a domain such as .com or .ph.",
+      });
+    }
+
+    const maximumLengths = {
+      email: 100,
+      contact_number: 20,
+      house_no: 20,
+      street: 255,
+      barangay: 100,
+      city: 100,
+      zip_code: 20,
+      emergency_contact_name: 150,
+      emergency_contact_number: 20,
+    };
+    const tooLong = Object.entries(maximumLengths).find(
+      ([field, maximum]) => editableFields[field].length > maximum,
+    );
+    if (tooLong) {
+      return res.status(400).json({
+        ok: false,
+        error: `${tooLong[0]} must not exceed ${tooLong[1]} characters.`,
+      });
+    }
+
+    let conn;
+    try {
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
+      const [rows] = await conn.execute(
+        `SELECT p.patient_id, p.user_id,
+                u.email, u.contact_number,
+                p.house_no, p.street, p.barangay, p.city, p.zip_code,
+                ec.contact_name AS emergency_contact_name,
+                ec.contact_number AS emergency_contact_number
+         FROM patients p
+         JOIN users u ON u.user_id = p.user_id
+         LEFT JOIN emergency_contacts ec ON ec.patient_id = p.patient_id
+         WHERE p.patient_id = ?
+         FOR UPDATE`,
+        [patientId],
+      );
+      if (!rows.length) {
+        await conn.rollback();
+        return res.status(404).json({ ok: false, error: "Patient not found." });
+      }
+
+      await conn.execute(
+        "UPDATE users SET email = ?, contact_number = ? WHERE user_id = ?",
+        [editableFields.email, editableFields.contact_number, rows[0].user_id],
+      );
+      await conn.execute(
+        `UPDATE patients
+         SET house_no = ?, street = ?, barangay = ?, city = ?, zip_code = ?
+         WHERE patient_id = ?`,
+        [
+          editableFields.house_no,
+          editableFields.street,
+          editableFields.barangay,
+          editableFields.city,
+          editableFields.zip_code,
+          patientId,
+        ],
+      );
+      await conn.execute(
+        `INSERT INTO emergency_contacts
+           (patient_id, contact_name, contact_number)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           contact_name = VALUES(contact_name),
+           contact_number = VALUES(contact_number)`,
+        [
+          patientId,
+          editableFields.emergency_contact_name,
+          editableFields.emergency_contact_number,
+        ],
+      );
+      await conn.execute(
+        `INSERT INTO patient_records (patient_id)
+         VALUES (?)
+         ON DUPLICATE KEY UPDATE patient_id = VALUES(patient_id)`,
+        [patientId],
+      );
+      await createAuditLog(conn, req, {
+        action: "UPDATE_PATIENT",
+        entityType: "patient",
+        entityId: patientId,
+        description: `Updated patient information for patient #${patientId}`,
+        oldValues: {
+          email: rows[0].email,
+          contact_number: rows[0].contact_number,
+          house_no: rows[0].house_no,
+          street: rows[0].street,
+          barangay: rows[0].barangay,
+          city: rows[0].city,
+          zip_code: rows[0].zip_code,
+          emergency_contact_name: rows[0].emergency_contact_name,
+          emergency_contact_number: rows[0].emergency_contact_number,
+        },
+        newValues: editableFields,
+      });
+      await conn.commit();
+      return res.json({
+        ok: true,
+        message: "Patient information updated successfully.",
+      });
+    } catch (err) {
+      if (conn) await conn.rollback();
+      if (err.code === "ER_DUP_ENTRY") {
+        return res.status(409).json({
+          ok: false,
+          error: "That email address is already assigned to another account.",
+        });
+      }
+      console.error(err);
+      return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    } finally {
+      if (conn) conn.release();
     }
   });
 

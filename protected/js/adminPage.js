@@ -23,6 +23,7 @@ const ROLE_TABS = Object.freeze({
     "dashboard",
     "view-appointments",
     "set-schedules",
+    "patient-info",
     "patient-status",
     "billing",
     "audit-logs",
@@ -626,32 +627,122 @@ function renderPatientInfoDetails(patient) {
   const dob = patient.date_of_birth
     ? new Date(patient.date_of_birth).toLocaleDateString()
     : "Not provided";
-  const address = [
-    patient.house_no,
-    patient.street,
-    patient.barangay,
-    patient.city,
-    patient.zip_code,
-  ]
-    .filter(Boolean)
-    .join(", ");
-
   box.innerHTML = `
-    <div style="border:1px solid #ddd;border-radius:8px;padding:16px;background:#fafafa;">
-      <h3 style="margin-top:0;">${escapeHtml(fullName || "Patient")}</h3>
-      <p><strong>Email:</strong> ${escapeHtml(patient.email || "Not provided")}</p>
-      <p><strong>Contact:</strong> ${escapeHtml(patient.contact_number || "Not provided")}</p>
-      <p><strong>Date of birth:</strong> ${escapeHtml(dob)}</p>
-      <p><strong>Gender:</strong> ${escapeHtml(patient.gender || "Not provided")}</p>
-      <p><strong>Blood type:</strong> ${escapeHtml(patient.blood_type || "Not provided")}</p>
-      <p><strong>Address:</strong> ${escapeHtml(address || "Not provided")}</p>
-      <p><strong>Emergency contact:</strong> ${escapeHtml(patient.emergency_contact_name || "Not provided")}</p>
-      <p><strong>Emergency contact number:</strong> ${escapeHtml(patient.emergency_contact_number || "Not provided")}</p>
-      <p><strong>Patient status:</strong> ${escapeHtml(patient.patient_status || "active")}</p>
-      <p><strong>Date registered:</strong> ${escapeHtml(patient.date_registered || "Not provided")}</p>
-      <p><strong>Appointments:</strong> ${escapeHtml(String(patient.appointment_count || 0))}</p>
-    </div>
+    <form id="patient-information-edit-form" data-patient-id="${escapeHtml(patient.patient_id)}">
+      <h3 style="margin-top:0;">Edit ${escapeHtml(fullName || "Patient")}</h3>
+      <p class="muted-copy">
+        Identity and medical identity fields are locked. Use Patient Status to
+        update the patient's active, inactive, or archived status.
+      </p>
+      <div class="row">
+        <div class="field">
+          <label for="patient-edit-first-name">First name</label>
+          <input id="patient-edit-first-name" value="${escapeHtml(patient.first_name || "")}" readonly />
+        </div>
+        <div class="field">
+          <label for="patient-edit-last-name">Last name</label>
+          <input id="patient-edit-last-name" value="${escapeHtml(patient.last_name || "")}" readonly />
+        </div>
+        <div class="field">
+          <label for="patient-edit-email">Email</label>
+          <input id="patient-edit-email" name="email" type="email" maxlength="100" value="${escapeHtml(patient.email || "")}" required />
+        </div>
+        <div class="field">
+          <label for="patient-edit-date-of-birth">Date of birth</label>
+          <input id="patient-edit-date-of-birth" value="${escapeHtml(dob)}" readonly />
+        </div>
+        <div class="field">
+          <label for="patient-edit-gender">Gender</label>
+          <input id="patient-edit-gender" value="${escapeHtml(patient.gender || "")}" readonly />
+        </div>
+        <div class="field">
+          <label for="patient-edit-blood-type">Blood type</label>
+          <input id="patient-edit-blood-type" value="${escapeHtml(patient.blood_type || "")}" readonly />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="patient-edit-contact-number">Contact number</label>
+          <input id="patient-edit-contact-number" name="contact_number" type="tel" maxlength="20" value="${escapeHtml(patient.contact_number || "")}" required />
+        </div>
+        <div class="field">
+          <label for="patient-edit-house-no">House number</label>
+          <input id="patient-edit-house-no" name="house_no" maxlength="20" value="${escapeHtml(patient.house_no || "")}" required />
+        </div>
+        <div class="field">
+          <label for="patient-edit-street">Street</label>
+          <input id="patient-edit-street" name="street" maxlength="255" value="${escapeHtml(patient.street || "")}" required />
+        </div>
+        <div class="field">
+          <label for="patient-edit-barangay">Barangay</label>
+          <input id="patient-edit-barangay" name="barangay" maxlength="100" value="${escapeHtml(patient.barangay || "")}" required />
+        </div>
+        <div class="field">
+          <label for="patient-edit-city">City</label>
+          <input id="patient-edit-city" name="city" maxlength="100" value="${escapeHtml(patient.city || "")}" required />
+        </div>
+        <div class="field">
+          <label for="patient-edit-zip-code">ZIP code</label>
+          <input id="patient-edit-zip-code" name="zip_code" maxlength="20" value="${escapeHtml(patient.zip_code || "")}" required />
+        </div>
+        <div class="field">
+          <label for="patient-edit-emergency-name">Emergency contact name</label>
+          <input id="patient-edit-emergency-name" name="emergency_contact_name" maxlength="150" value="${escapeHtml(patient.emergency_contact_name || "")}" required />
+        </div>
+        <div class="field">
+          <label for="patient-edit-emergency-number">Emergency contact number</label>
+          <input id="patient-edit-emergency-number" name="emergency_contact_number" type="tel" maxlength="20" value="${escapeHtml(patient.emergency_contact_number || "")}" required />
+        </div>
+      </div>
+
+      <p>
+        <strong>Status:</strong> ${escapeHtml(patient.patient_status || "active")}
+        &nbsp;|&nbsp; <strong>Date registered:</strong> ${escapeHtml(patient.date_registered || "Not provided")}
+        &nbsp;|&nbsp; <strong>Appointments:</strong> ${escapeHtml(String(patient.appointment_count || 0))}
+      </p>
+      <button type="submit">Save Patient Information</button>
+      <div id="patient-information-edit-result" class="result" role="status"></div>
+    </form>
   `;
+
+  box
+    .querySelector("#patient-information-edit-form")
+    ?.addEventListener("submit", submitPatientInformationEdit);
+}
+
+async function submitPatientInformationEdit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const patientId = form.dataset.patientId;
+  const result = document.getElementById("patient-information-edit-result");
+  const button = form.querySelector('button[type="submit"]');
+  const payload = Object.fromEntries(new FormData(form).entries());
+
+  result.textContent = "Saving patient information...";
+  result.classList.remove("error", "success");
+  button.disabled = true;
+  try {
+    const response = await fetch(
+      `/api/patients/${encodeURIComponent(patientId)}/information`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Unable to save patient information.");
+    }
+    result.textContent = "Patient information saved successfully.";
+    result.classList.add("success");
+  } catch (error) {
+    result.textContent = error.message;
+    result.classList.add("error");
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function renderDentistSuggestions(dentists, target) {
