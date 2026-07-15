@@ -23,36 +23,3 @@ make schema
 
 The database password used in the DSN must be URL-encoded if it contains
 characters such as `#`, `<`, `@`, or `:`.
-
-## Role migration
-
-For an existing database created with the old `patient`/`admin` roles, run
-`role_migration.sql` once before starting this version. It keeps the earliest
-legacy administrator as the superadmin and converts other linked doctor/staff
-accounts to their restricted roles. New databases created from `database.sql`
-already use `patient`, `superadmin`, `doctor`, and `staff` roles.
-
-## Emergency contact migration
-
-For an existing database that still stores emergency-contact details in
-`patient_records`, run `emergency_contacts_migration.sql` once **before**
-running `make migrate` or starting this version. The migration creates the new
-table, copies all existing contact details, and then removes the old columns.
-New databases created from `database.sql` already use the separate
-`emergency_contacts` table and do not need this migration.
-
-## Medical profile migration
-
-For an existing database, run `medical_profile_migration.sql` once before
-running `make migrate` or starting this version. It creates the patient medical
-profile and allergy tables, initializes existing patients with an unknown
-diabetes status, and removes weight from `patient_vitals`. New databases
-created from `database.sql` do not need this migration.
-
-## Appointment and payment status migration
-
-For an existing database, run `appointment_payment_status_migration.sql` once
-before starting this version. It adds the Late / No Show appointment status,
-enables the E-Wallet payment method, and updates appointments from earlier
-dates that are still marked as scheduled. New databases created from
-`database.sql` already include these values.
