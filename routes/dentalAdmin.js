@@ -579,6 +579,43 @@ function registerDentalAdminRoutes(app) {
     }
   });
 
+  app.get("/api/dentists/schedules", async (req, res) => {
+    if (!req.session.userId)
+      return res.status(401).json({ error: "Not logged in" });
+
+    const dentistId = req.query.dentist_id
+      ? parsePositiveInteger(req.query.dentist_id)
+      : null;
+    if (req.query.dentist_id && !dentistId) {
+      return res.status(400).json({ error: "Invalid dentist ID." });
+    }
+
+    try {
+      const dentistWhere = dentistId ? " AND d.dentist_id = ?" : "";
+      const [rows] = await pool.execute(
+        `SELECT d.dentist_id, u.first_name, u.last_name, d.specialization,
+                ds.day_of_week,
+                TIME_FORMAT(ds.start_time, '%H:%i') AS start_time,
+                TIME_FORMAT(ds.end_time, '%H:%i') AS end_time
+         FROM dentist d
+         JOIN users u ON u.user_id = d.user_id
+         LEFT JOIN dentist_schedule ds
+           ON ds.dentist_id = d.dentist_id AND ds.is_active = TRUE
+         WHERE 1 = 1${dentistWhere}
+         ORDER BY u.first_name, u.last_name,
+                  FIELD(ds.day_of_week,
+                    'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+                    'Friday', 'Saturday', 'Sunday'),
+                  ds.start_time`,
+        dentistId ? [dentistId] : [],
+      );
+      return res.json(rows);
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
+    }
+  });
+
   app.get("/api/dentists/search", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
@@ -1170,6 +1207,7 @@ function registerDentalAdminRoutes(app) {
       if (appointment_id) {
         const [appointmentRows] = await pool.execute(
           `SELECT a.appointment_id, a.patient_id, a.dentist_id,
+                  a.appointment_status,
                   DATE_FORMAT(a.appointment_date, '%Y-%m-%d') AS appointment_date,
                   dr.dental_record_id,
                   EXISTS(
@@ -1190,6 +1228,13 @@ function registerDentalAdminRoutes(app) {
           return res.status(400).json({
             ok: false,
             error: "That appointment does not belong to this patient.",
+          });
+        }
+        if (["cancelled", "no_show"].includes(appointmentRows[0].appointment_status)) {
+          return res.status(409).json({
+            ok: false,
+            error:
+              "Dental records cannot be added to a cancelled or no-show appointment.",
           });
         }
         if (appointmentRows[0].has_treatment) {
@@ -1383,6 +1428,7 @@ function registerDentalAdminRoutes(app) {
 
       const [appointmentRows] = await conn.execute(
         `SELECT a.appointment_id, a.patient_id, a.dentist_id,
+                a.appointment_status,
                 DATE_FORMAT(a.appointment_date, '%Y-%m-%d') AS appointment_date,
                 dr.dental_record_id
          FROM appointments a
@@ -1404,6 +1450,14 @@ function registerDentalAdminRoutes(app) {
         return res.status(400).json({
           ok: false,
           error: "That appointment does not belong to this patient.",
+        });
+      }
+      if (["cancelled", "no_show"].includes(appointmentRows[0].appointment_status)) {
+        await conn.rollback();
+        return res.status(409).json({
+          ok: false,
+          error:
+            "Vitals cannot be recorded for a cancelled or no-show appointment.",
         });
       }
 
@@ -1507,15 +1561,17 @@ function registerDentalAdminRoutes(app) {
       let records;
       if (dentalRecordId) {
         [records] = await conn.execute(
-          `SELECT dental_record_id, patient_id, appointment_id
-           FROM dental_records
-           WHERE dental_record_id = ?
+          `SELECT dr.dental_record_id, dr.patient_id, dr.appointment_id,
+                  a.appointment_status
+           FROM dental_records dr
+           LEFT JOIN appointments a ON a.appointment_id = dr.appointment_id
+           WHERE dr.dental_record_id = ?
            FOR UPDATE`,
           [dentalRecordId],
         );
       } else {
         const [appointments] = await conn.execute(
-          `SELECT appointment_id, patient_id, dentist_id,
+          `SELECT appointment_id, patient_id, dentist_id, appointment_status,
                   DATE_FORMAT(appointment_date, '%Y-%m-%d') AS appointment_date
            FROM appointments
            WHERE appointment_id = ?
@@ -1533,6 +1589,14 @@ function registerDentalAdminRoutes(app) {
           return res.status(400).json({
             ok: false,
             error: "That appointment does not belong to this patient.",
+          });
+        }
+        if (["cancelled", "no_show"].includes(appointments[0].appointment_status)) {
+          await conn.rollback();
+          return res.status(409).json({
+            ok: false,
+            error:
+              "Dental records cannot be added to a cancelled or no-show appointment.",
           });
         }
 
@@ -1573,6 +1637,14 @@ function registerDentalAdminRoutes(app) {
         return res
           .status(404)
           .json({ ok: false, error: "Dental record not found." });
+      }
+      if (["cancelled", "no_show"].includes(records[0].appointment_status)) {
+        await conn.rollback();
+        return res.status(409).json({
+          ok: false,
+          error:
+            "Dental records cannot be changed for a cancelled or no-show appointment.",
+        });
       }
 
       const [updateResult] = await conn.execute(

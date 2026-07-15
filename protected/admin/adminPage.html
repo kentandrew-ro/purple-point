@@ -133,6 +133,13 @@
             ></span
             >Cancelled</span
           >
+          <span class="appointment-status-legend__item"
+            ><span
+              class="appointment-status-legend__swatch appointment-calendar-event--no_show"
+              aria-hidden="true"
+            ></span
+            >Late / No Show</span
+          >
         </div>
         <div id="admin-appointments-calendar">Loading appointments…</div>
       </div>
@@ -155,7 +162,9 @@
 
         <div id="appointment-form-card" class="card" style="display: none">
           <h2>Add Appointment</h2>
-          <form id="add-appointment-form">
+          <div class="appointment-booking-layout">
+            <div>
+              <form id="add-appointment-form">
             <div id="patient-id-field" class="field" style="position: relative">
               <label for="patient-search">Patient</label>
               <input
@@ -222,8 +231,22 @@
             </div>
 
             <button type="submit">Save Appointment</button>
-          </form>
-          <div id="add-appointment-result" style="margin-top: 16px"></div>
+              </form>
+              <div id="add-appointment-result" style="margin-top: 16px"></div>
+            </div>
+            <aside
+              class="dentist-schedule-sidebar"
+              aria-labelledby="dentist-schedule-heading"
+            >
+              <h3 id="dentist-schedule-heading">Dentist Schedule</h3>
+              <p class="form-hint">
+                Select a doctor to focus their regular clinic hours.
+              </p>
+              <div id="dentist-schedule-sidebar" aria-live="polite">
+                Loading schedules...
+              </div>
+            </aside>
+          </div>
         </div>
 
         <div id="clinic-hours-form-card" class="card" style="display: none">
@@ -924,7 +947,8 @@
           </form>
 
           <h4>Payment History</h4>
-          <table>
+          <div class="billing-payment-history-scroll">
+            <table>
             <thead>
               <tr>
                 <th>Date</th>
@@ -939,7 +963,8 @@
               </tr>
             </thead>
             <tbody id="billing-payment-history"></tbody>
-          </table>
+            </table>
+          </div>
 
           <h4>Record Payment</h4>
           <form id="billing-payment-form">
@@ -988,14 +1013,14 @@
             <p>
               The PurplePoint payment reference will be generated automatically.
             </p>
-            <p>
+            <p id="billing-payment-external-reference-field" hidden>
               <label for="billing-payment-external-reference"
                 >External reference</label
               ><br />
               <input
                 id="billing-payment-external-reference"
                 maxlength="100"
-                placeholder="Optional e-wallet, bank, or card reference"
+                placeholder="Optional e-wallet or bank reference"
               />
             </p>
             <p>

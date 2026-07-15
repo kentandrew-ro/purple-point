@@ -478,7 +478,7 @@ button.forgot-password-button:hover {
 }
 
 .form-card {
-  width: min(850px, 100%);
+  width: min(1100px, 100%);
   margin: 0 auto;
 }
 .form-card form {
@@ -622,6 +622,82 @@ tr:hover td {
   color: #8d2630;
   border-left: 3px solid #c94b56;
   background: #ffcdd2;
+}
+.appointment-calendar-event--no_show {
+  color: #704c00;
+  border-left: 3px solid #d8a63d;
+  background: #fff0bf;
+}
+.status-no_show {
+  color: #704c00;
+  background: #fff0bf;
+}
+
+.appointment-booking-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.55fr);
+  gap: 24px;
+  align-items: start;
+}
+.dentist-schedule-sidebar {
+  position: sticky;
+  top: 84px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: #faf8fd;
+}
+.dentist-schedule-sidebar h3 {
+  margin-top: 0;
+}
+.dentist-schedule-card {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.dentist-schedule-card:first-child {
+  border-top: 0;
+}
+.dentist-schedule-card.is-selected {
+  margin: 0 -10px;
+  padding: 12px 10px;
+  border-radius: 8px;
+  background: var(--purple-pale);
+}
+.dentist-schedule-card strong,
+.dentist-schedule-card small {
+  display: block;
+}
+.dentist-schedule-hours {
+  margin: 7px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.password-input-wrap {
+  position: relative;
+}
+.password-input-wrap input {
+  width: 100%;
+  padding-right: 68px;
+}
+button.password-visibility-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  min-height: 32px;
+  padding: 5px 9px;
+  transform: translateY(-50%);
+  border: 0;
+  box-shadow: none;
+  color: var(--purple);
+  background: transparent;
+  font-size: 0.78rem;
+}
+button.password-visibility-toggle:hover {
+  transform: translateY(-50%);
+  color: var(--purple-dark);
+  background: var(--purple-pale);
 }
 .badge-purple {
   color: var(--purple);
@@ -1078,6 +1154,19 @@ dialog form {
   gap: 12px;
 }
 
+#billing-view-dialog {
+  width: min(96vw, 1180px);
+}
+.billing-payment-history-scroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+}
+.billing-payment-history-scroll table {
+  min-width: 1050px;
+}
+
 #cancel-reason-modal {
   backdrop-filter: blur(3px);
 }
@@ -1087,6 +1176,12 @@ dialog form {
 }
 
 @media (max-width: 900px) {
+  .appointment-booking-layout {
+    grid-template-columns: 1fr;
+  }
+  .dentist-schedule-sidebar {
+    position: static;
+  }
   .auth-page {
     grid-template-columns: 1fr;
   }

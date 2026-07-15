@@ -46,6 +46,7 @@ function formatDateTime(dateStr, timeStr) {
 }
 
 function statusLabel(status) {
+  if (status === "no_show") return "Late / No Show";
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
@@ -100,9 +101,12 @@ async function loadAppointments() {
       const reasonCell = document.createElement("td");
       reasonCell.textContent = appt.reason_for_visit || appt.appointment_type;
       const statusCell = document.createElement("td");
-      const status = ["scheduled", "completed", "cancelled"].includes(
-        appt.appointment_status,
-      )
+      const status = [
+        "scheduled",
+        "completed",
+        "cancelled",
+        "no_show",
+      ].includes(appt.appointment_status)
         ? appt.appointment_status
         : "scheduled";
       const statusBadge = document.createElement("span");
@@ -171,7 +175,7 @@ async function cancelAppointment(appointmentId, btn) {
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("pageshow", () => {
   loadProfileRequirement();
   loadAppointments();
 });

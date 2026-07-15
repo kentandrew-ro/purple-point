@@ -48,3 +48,11 @@ running `make migrate` or starting this version. It creates the patient medical
 profile and allergy tables, initializes existing patients with an unknown
 diabetes status, and removes weight from `patient_vitals`. New databases
 created from `database.sql` do not need this migration.
+
+## Appointment and payment status migration
+
+For an existing database, run `appointment_payment_status_migration.sql` once
+before starting this version. It adds the Late / No Show appointment status,
+enables the E-Wallet payment method, and updates appointments from earlier
+dates that are still marked as scheduled. New databases created from
+`database.sql` already include these values.

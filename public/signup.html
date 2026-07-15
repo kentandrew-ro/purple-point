@@ -81,20 +81,49 @@
           </div>
           <div class="field-group">
             <label for="password">Password</label
-            ><input
-              id="password"
-              type="password"
-              name="password"
-              placeholder="Create a strong password"
-              autocomplete="new-password"
-              minlength="8"
-              aria-describedby="password-requirement"
-              required
-            />
+            ><div class="password-input-wrap">
+              <input
+                id="password"
+                type="password"
+                name="password"
+                placeholder="Create a strong password"
+                autocomplete="new-password"
+                minlength="8"
+                aria-describedby="password-requirement"
+                required
+              />
+              <button
+                type="button"
+                class="password-visibility-toggle"
+                data-password-toggle="password"
+                aria-label="Show password"
+                aria-pressed="false"
+              >Show</button>
+            </div>
             <small id="password-requirement" class="form-hint"
               >At least 8 characters, including one uppercase letter and one
               special character.</small
             >
+          </div>
+          <div class="field-group">
+            <label for="confirmPassword">Confirm password</label>
+            <div class="password-input-wrap">
+              <input
+                id="confirmPassword"
+                type="password"
+                name="confirmPassword"
+                placeholder="Enter your password again"
+                autocomplete="new-password"
+                required
+              />
+              <button
+                type="button"
+                class="password-visibility-toggle"
+                data-password-toggle="confirmPassword"
+                aria-label="Show confirm password"
+                aria-pressed="false"
+              >Show</button>
+            </div>
           </div>
           <div class="field-group">
             <label for="contactNumber">Contact number</label
@@ -119,6 +148,7 @@
     </main>
 
     <script src="/public_js/requiredFields.js"></script>
+    <script src="/public_js/passwordVisibility.js"></script>
     <script src="public_js/signup.js"></script>
   </body>
 </html>

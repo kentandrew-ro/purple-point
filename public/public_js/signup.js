@@ -37,6 +37,7 @@ signupForm.addEventListener("submit", async (event) => {
   const username = signupForm.elements.username.value.trim();
   const email = signupForm.elements.email.value.trim().toLowerCase();
   const password = signupForm.elements.password.value;
+  const confirmPassword = signupForm.elements.confirmPassword.value;
   const contactNumber = signupForm.elements.contactNumber.value.trim();
 
   if (
@@ -45,6 +46,7 @@ signupForm.addEventListener("submit", async (event) => {
     !username ||
     !email ||
     !password ||
+    !confirmPassword ||
     !contactNumber
   ) {
     showSignupMessage("Please fill in all fields.");
@@ -66,6 +68,12 @@ signupForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (password !== confirmPassword) {
+    showSignupMessage("Passwords do not match.");
+    signupForm.elements.confirmPassword.focus();
+    return;
+  }
+
   signupButton.disabled = true;
   signupButton.textContent = "Creating Account...";
   showSignupMessage("Creating your account...", "");
@@ -80,6 +88,7 @@ signupForm.addEventListener("submit", async (event) => {
         username,
         email,
         password,
+        confirmPassword,
         contactNumber,
       }),
     });

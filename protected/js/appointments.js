@@ -8,6 +8,7 @@ const APPOINTMENT_DRAFT_FIELDS = [
 ];
 
 let appointmentDraftKey = null;
+let dentistScheduleRequestId = 0;
 
 function readAppointmentDraft() {
   if (!appointmentDraftKey) return {};
@@ -78,6 +79,20 @@ function parseAppointmentDateTime(value) {
   };
 }
 
+function localDateTimeInputValue(date = new Date()) {
+  const year = String(date.getFullYear()).padStart(4, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function setAppointmentDateMinimum(form) {
+  const input = form?.elements?.appointment_date;
+  if (input) input.min = localDateTimeInputValue();
+}
+
 function parseDateOnly(dateVal) {
   if (!dateVal) return null;
 
@@ -110,7 +125,10 @@ function formatAppointmentLabel(appt) {
   const last = (appt.last_name || "").trim();
   const initials = first ? `${first[0].toUpperCase()}.` : "";
   const timeLabel = formatTimeLabel(appt.appointment_time);
-  const status = appt.appointment_status || "";
+  const status =
+    appt.appointment_status === "no_show"
+      ? "late / no show"
+      : appt.appointment_status || "";
   const namePart = `${initials} ${last}`.trim();
 
   let label = namePart;
@@ -312,7 +330,12 @@ function renderAppointmentsCalendar(
         const rawStatus = String(
           appt.appointment_status || "",
         ).toLowerCase();
-        const status = ["scheduled", "completed", "cancelled"].includes(
+        const status = [
+          "scheduled",
+          "completed",
+          "cancelled",
+          "no_show",
+        ].includes(
           rawStatus,
         )
           ? rawStatus
@@ -322,6 +345,9 @@ function renderAppointmentsCalendar(
         tag.style.cssText =
           "font-size:11px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:3px;padding:2px 4px;";
         tag.textContent = formatAppointmentLabel(appt);
+        if (status === "cancelled" && appt.cancel_reason) {
+          tag.title = `Cancellation reason: ${appt.cancel_reason}`;
+        }
         list.appendChild(tag);
       });
       if (items.length > 4) {
@@ -366,6 +392,64 @@ async function loadDentists(dateTimeValue, appointmentType) {
     throw new Error(error.error || "Failed to load dentists");
   }
   return response.json();
+}
+
+async function loadDentistSchedules(selectedDentistId = "") {
+  const container = document.getElementById("dentist-schedule-sidebar");
+  if (!container) return;
+
+  const requestId = ++dentistScheduleRequestId;
+  container.textContent = "Loading schedules...";
+  try {
+    const params = new URLSearchParams();
+    if (selectedDentistId) params.set("dentist_id", selectedDentistId);
+    const query = params.toString();
+    const response = await fetch(
+      `/api/dentists/schedules${query ? `?${query}` : ""}`,
+    );
+    const rows = await response.json().catch(() => []);
+    if (!response.ok) {
+      throw new Error(rows.error || "Unable to load dentist schedules.");
+    }
+    if (requestId !== dentistScheduleRequestId) return;
+
+    const dentists = new Map();
+    rows.forEach((row) => {
+      const key = String(row.dentist_id);
+      if (!dentists.has(key)) {
+        dentists.set(key, { ...row, schedules: [] });
+      }
+      if (row.day_of_week) dentists.get(key).schedules.push(row);
+    });
+
+    if (!dentists.size) {
+      container.innerHTML = "<p>No active dentist schedules are available.</p>";
+      return;
+    }
+
+    container.innerHTML = [...dentists.values()]
+      .map((dentist) => {
+        const isSelected =
+          String(dentist.dentist_id) === String(selectedDentistId);
+        const schedules = dentist.schedules.length
+          ? `<ul class="dentist-schedule-hours">${dentist.schedules
+              .map(
+                (schedule) =>
+                  `<li>${escapeHtml(schedule.day_of_week)}: ${escapeHtml(formatTimeLabel(schedule.start_time))}–${escapeHtml(formatTimeLabel(schedule.end_time))}</li>`,
+              )
+              .join("")}</ul>`
+          : '<p class="form-hint">No regular hours set.</p>';
+        return `<section class="dentist-schedule-card${isSelected ? " is-selected" : ""}">
+          <strong>Dr. ${escapeHtml(`${dentist.first_name} ${dentist.last_name}`)}</strong>
+          <small>${escapeHtml(dentist.specialization || "General dentistry")}</small>
+          ${schedules}
+        </section>`;
+      })
+      .join("");
+  } catch (error) {
+    if (requestId !== dentistScheduleRequestId) return;
+    container.innerHTML = `<p class="error">${escapeHtml(error.message)}</p>`;
+  }
 }
 
 async function populateDentistDropdown() {
@@ -415,6 +499,7 @@ async function populateDentistDropdown() {
     if (dentists.some((dentist) => String(dentist.dentist_id) === currentValue)) {
       select.value = currentValue;
     }
+    loadDentistSchedules(select.value);
   } catch (err) {
     console.error("Failed to load dentists:", err);
     select.innerHTML = '<option value="">Unable to load available doctors</option>';
@@ -430,6 +515,15 @@ async function handleAddSubmit(event) {
   resultBox.innerHTML = "";
 
   const dateParts = parseAppointmentDateTime(form.appointment_date.value);
+  if (
+    dateParts &&
+    new Date(form.appointment_date.value).getTime() < Date.now()
+  ) {
+    resultBox.innerHTML =
+      '<p style="color:red;">Choose the present time or a future date and time.</p>';
+    form.appointment_date.focus();
+    return;
+  }
 
   const patientIdField = document.getElementById("patient-id-field");
   const isAdminField =
@@ -597,8 +691,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const addForm = document.getElementById("add-appointment-form");
   if (addForm) {
+    setAppointmentDateMinimum(addForm);
     restoreAppointmentDraft(addForm);
     await populateDentistDropdown();
+    await loadDentistSchedules(addForm.elements.dentist_id?.value || "");
     addForm.addEventListener("submit", handleAddSubmit);
     addForm.addEventListener("input", (event) => {
       autosaveAppointmentDraft(addForm);
@@ -610,6 +706,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         event.target?.name === "appointment_type"
       ) {
         populateDentistDropdown();
+      }
+      if (event.target?.name === "dentist_id") {
+        loadDentistSchedules(event.target.value);
       }
     });
   }

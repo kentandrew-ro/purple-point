@@ -47,7 +47,9 @@
           </button>
           <section class="card form-card" style="margin-top: 18px">
             <h2>Book an Appointment</h2>
-            <form id="add-appointment-form" style="display: grid; gap: 16px">
+            <div class="appointment-booking-layout">
+              <div>
+                <form id="add-appointment-form" style="display: grid; gap: 16px">
               <div id="patient-id-field">
                 <input
                   name="patient_id"
@@ -99,12 +101,26 @@
               <div class="actions">
                 <button type="submit">Save Appointment</button>
               </div>
-            </form>
-            <div
-              id="add-appointment-result"
-              class="form-message"
-              aria-live="polite"
-            ></div>
+                </form>
+                <div
+                  id="add-appointment-result"
+                  class="form-message"
+                  aria-live="polite"
+                ></div>
+              </div>
+              <aside
+                class="dentist-schedule-sidebar"
+                aria-labelledby="dentist-schedule-heading"
+              >
+                <h3 id="dentist-schedule-heading">Dentist Schedule</h3>
+                <p class="form-hint">
+                  Select a doctor to focus their regular clinic hours.
+                </p>
+                <div id="dentist-schedule-sidebar" aria-live="polite">
+                  Loading schedules...
+                </div>
+              </aside>
+            </div>
           </section>
         </div>
 
@@ -140,6 +156,13 @@
                 aria-hidden="true"
               ></span
               >Cancelled</span
+            >
+            <span class="appointment-status-legend__item"
+              ><span
+                class="appointment-status-legend__swatch appointment-calendar-event--no_show"
+                aria-hidden="true"
+              ></span
+              >Late / No Show</span
             >
           </div>
           <div id="view-appointment-result" class="card"></div>

@@ -35,6 +35,7 @@ function registerAuthProfileRoutes(
     const email = requireField(body, "email")?.toLowerCase();
     const contactNumber = requireField(body, "contactNumber");
     const password = body.password;
+    const confirmPassword = body.confirmPassword;
 
     if (
       !firstName ||
@@ -43,9 +44,15 @@ function registerAuthProfileRoutes(
       !email ||
       typeof password !== "string" ||
       !password ||
+      typeof confirmPassword !== "string" ||
+      !confirmPassword ||
       !contactNumber
     ) {
       return res.status(400).json({ error: "All fields are required." });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({ error: "Passwords do not match." });
     }
 
     if (!isValidEmail(email)) {

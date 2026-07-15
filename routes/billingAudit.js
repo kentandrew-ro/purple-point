@@ -592,7 +592,12 @@ function registerBillingAuditRoutes(app) {
     const billingStatus = (
       requireField(req.body, "billing_status") || ""
     ).toLowerCase();
-    const externalReference = requireField(req.body, "external_reference");
+    const externalReferenceRaw = requireField(req.body, "external_reference");
+    const externalReference = ["e_wallet", "bank_transfer"].includes(
+      paymentMethod,
+    )
+      ? externalReferenceRaw
+      : null;
     const notes = requireField(req.body, "notes");
 
     if (!billingId) {

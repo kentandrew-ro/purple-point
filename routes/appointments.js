@@ -16,6 +16,15 @@ const {
 } = require("../lib/businessRules");
 const { recordAudit } = require("../lib/audit");
 
+async function markOverdueAppointments(executor = pool) {
+  await executor.execute(
+    `UPDATE appointments
+     SET appointment_status = 'no_show'
+     WHERE appointment_status = 'scheduled'
+       AND appointment_date < CURDATE()`,
+  );
+}
+
 function registerAppointmentRoutes(app) {
   app.get("/api/appointments", async (req, res) => {
     if (!req.session.userId) {
@@ -23,6 +32,7 @@ function registerAppointmentRoutes(app) {
     }
 
     try {
+      await markOverdueAppointments();
       let rows;
 
       const role = normalizeRole(req.session.role);
@@ -241,6 +251,17 @@ function registerAppointmentRoutes(app) {
           .json({ ok: false, error: "Invalid appointment status." });
       }
 
+      const [[dateCheck]] = await pool.execute(
+        `SELECT TIMESTAMP(?, ?) >= NOW() AS is_bookable`,
+        [appointment_date, appointment_time],
+      );
+      if (!dateCheck.is_bookable) {
+        return res.status(400).json({
+          ok: false,
+          error: "Appointments must be scheduled for the present time or later.",
+        });
+      }
+
       const [availableSchedules] = await pool.execute(
         `SELECT schedule_id
          FROM dentist_schedule
@@ -335,6 +356,7 @@ function registerAppointmentRoutes(app) {
     }
 
     try {
+      await markOverdueAppointments();
       const [existing] = await pool.execute(
         "SELECT appointment_id, appointment_status FROM appointments WHERE appointment_id = ?",
         [appointmentId],
@@ -350,6 +372,12 @@ function registerAppointmentRoutes(app) {
         return res
           .status(409)
           .json({ ok: false, error: "Appointment is already cancelled." });
+      }
+      if (existing[0].appointment_status !== "scheduled") {
+        return res.status(409).json({
+          ok: false,
+          error: "Only scheduled appointments can be cancelled.",
+        });
       }
 
       const role = normalizeRole(req.session.role);
@@ -440,6 +468,7 @@ function registerAppointmentRoutes(app) {
     }
 
     try {
+      await markOverdueAppointments();
       if (normalizeRole(req.session.role) === "doctor") {
         const [assignment] = await pool.execute(
           `SELECT a.appointment_id
@@ -505,6 +534,7 @@ function registerAppointmentRoutes(app) {
     if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
 
     try {
+      await markOverdueAppointments();
       const [[{ total_patients }]] = await pool.execute(
         "SELECT COUNT(*) AS total_patients FROM patients",
       );
@@ -548,6 +578,7 @@ function registerAppointmentRoutes(app) {
     if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
 
     try {
+      await markOverdueAppointments();
       const role = normalizeRole(req.session.role);
       const doctorWhere = role === "doctor" ? " AND d.user_id = ?" : "";
       const doctorParams = role === "doctor" ? [req.session.userId] : [];

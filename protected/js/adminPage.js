@@ -131,6 +131,11 @@ async function initializeRoleInterface() {
       return;
     }
 
+    if (managementRole !== "staff") {
+      document.getElementById("btn-show-staff-shift")?.remove();
+      document.getElementById("staff-shift-form-card")?.remove();
+    }
+
     document.body.dataset.role = managementRole;
     document.querySelectorAll(".sidebar a[data-roles]").forEach((link) => {
       const allowedRoles = (link.dataset.roles || "").split(/\s+/);
@@ -352,9 +357,12 @@ function renderAdminCalendar(appointments, container, baseDate) {
         const rawStatus = String(
           appt.appointment_status || "",
         ).toLowerCase();
-        const status = ["scheduled", "completed", "cancelled"].includes(
-          rawStatus,
-        )
+        const status = [
+          "scheduled",
+          "completed",
+          "cancelled",
+          "no_show",
+        ].includes(rawStatus)
           ? rawStatus
           : "scheduled";
 
@@ -362,8 +370,13 @@ function renderAdminCalendar(appointments, container, baseDate) {
         tag.className = `appointment-calendar-event appointment-calendar-event--${status}`;
         tag.style.cssText =
           "font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:3px;padding:2px 5px;cursor:pointer;";
-        tag.title = `${name} — ${time} — ${status} (click to update status)`;
         tag.textContent = `${name} — ${time}`;
+        const statusLabel = status === "no_show" ? "late / no show" : status;
+        const cancellationDetails =
+          status === "cancelled" && appt.cancel_reason
+            ? ` — Reason: ${appt.cancel_reason}`
+            : "";
+        tag.title = `${name} — ${time} — ${statusLabel}${cancellationDetails} (click to update status)`;
         tag.addEventListener("click", () => {
           openApptStatusModal(appt, () =>
             loadAdminAppointments(adminCalendarBaseDate),
@@ -421,7 +434,7 @@ function openApptStatusModal(appt, onSaved) {
     : "";
   const timeLabel = apptFormatTime(appt.appointment_time);
   const currentStatus = (appt.appointment_status || "").toLowerCase();
-  const statuses = ["scheduled", "completed", "cancelled"];
+  const statuses = ["scheduled", "completed", "cancelled", "no_show"];
 
   const overlay = document.createElement("div");
   overlay.id = "appt-status-modal-overlay";
@@ -440,7 +453,7 @@ function openApptStatusModal(appt, onSaved) {
         ${statuses
           .map(
             (s) =>
-              `<option value="${s}" ${s === currentStatus ? "selected" : ""}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`,
+              `<option value="${s}" ${s === currentStatus ? "selected" : ""}>${s === "no_show" ? "Late / No Show" : s.charAt(0).toUpperCase() + s.slice(1)}</option>`,
           )
           .join("")}
       </select>
@@ -463,6 +476,8 @@ function openApptStatusModal(appt, onSaved) {
   const reasonField = box.querySelector("#appt-cancel-reason-field");
   const reasonInput = box.querySelector("#appt-cancel-reason");
   const errorEl = box.querySelector("#appt-status-error");
+
+  reasonInput.value = appt.cancel_reason || "";
 
   function syncReasonField() {
     reasonField.style.display = select.value === "cancelled" ? "block" : "none";
@@ -1934,6 +1949,9 @@ function includeAppointmentToothCharts(appointments) {
   );
 
   (appointments || []).forEach((appointment) => {
+    if (["cancelled", "no_show"].includes(appointment.appointment_status)) {
+      return;
+    }
     const appointmentId = String(appointment.appointment_id);
     if (includedAppointments.has(appointmentId)) return;
     records.push({
@@ -2157,7 +2175,11 @@ async function loadPatientAppointmentsForTreatmentForm(patientId) {
     includeAppointmentToothCharts(data.appointments || []);
 
     (data.appointments || []).forEach((a) => {
-      if (a.has_treatment) return;
+      if (
+        a.has_treatment ||
+        ["cancelled", "no_show"].includes(a.appointment_status)
+      )
+        return;
       const opt = document.createElement("option");
       opt.value = a.appointment_id;
       opt.dataset.dentistId = a.dentist_id || "";
@@ -2189,6 +2211,9 @@ async function loadPatientAppointmentsForVitalsForm(patientId) {
     if (!res.ok || !data.ok) return;
 
     (data.appointments || []).forEach((appointment) => {
+      if (["cancelled", "no_show"].includes(appointment.appointment_status)) {
+        return;
+      }
       const option = document.createElement("option");
       option.value = appointment.appointment_id;
       option.dataset.date = appointment.appointment_date || "";
@@ -2735,6 +2760,22 @@ function renderBillingPaymentHistory(payments, billingStatus) {
     .join("");
 }
 
+function syncPaymentExternalReferenceVisibility() {
+  const method = document.getElementById("billing-payment-method")?.value;
+  const field = document.getElementById(
+    "billing-payment-external-reference-field",
+  );
+  const input = document.getElementById(
+    "billing-payment-external-reference",
+  );
+  if (!field || !input) return;
+
+  const shouldShow = ["e_wallet", "bank_transfer"].includes(method);
+  field.hidden = !shouldShow;
+  input.disabled = !shouldShow;
+  if (!shouldShow) input.value = "";
+}
+
 async function openBillingStatement(billingId) {
   const dialog = document.getElementById("billing-view-dialog");
   const statusOnlyMessage = document.getElementById(
@@ -2803,6 +2844,7 @@ async function openBillingStatement(billingId) {
     document.getElementById("billing-payment-billing-status").value =
       billing.billing_status;
     document.getElementById("billing-payment-external-reference").value = "";
+    syncPaymentExternalReferenceVisibility();
     document.getElementById("billing-payment-notes").value = "";
     renderBillingPaymentHistory(data.payments || [], billing.billing_status);
 
@@ -2833,6 +2875,7 @@ function initBillingTab() {
   const updateStatus = document.getElementById("billing-update-status");
   const paymentAmount = document.getElementById("billing-payment-amount");
   const paymentStatus = document.getElementById("billing-payment-status");
+  const paymentMethod = document.getElementById("billing-payment-method");
   const paymentBillingStatus = document.getElementById(
     "billing-payment-billing-status",
   );
@@ -2869,6 +2912,11 @@ function initBillingTab() {
   updateTotal?.addEventListener("input", syncUpdatedStatementStatus);
   paymentAmount?.addEventListener("input", syncPaymentStatementStatus);
   paymentStatus?.addEventListener("change", syncPaymentStatementStatus);
+  paymentMethod?.addEventListener(
+    "change",
+    syncPaymentExternalReferenceVisibility,
+  );
+  syncPaymentExternalReferenceVisibility();
 
   if (search) {
     search.addEventListener("input", debounce(loadBillings, 250));
