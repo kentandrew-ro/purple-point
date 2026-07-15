@@ -467,6 +467,7 @@ async function populateDentistDropdown() {
         : "Choose a date and time first";
     select.innerHTML = `<option value="">${instruction}</option>`;
     select.disabled = true;
+    loadDentistSchedules("");
     return;
   }
 
