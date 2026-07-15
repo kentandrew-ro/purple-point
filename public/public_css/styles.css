@@ -814,6 +814,9 @@ body.admin-layout {
   accent-color: var(--purple);
   box-shadow: none;
 }
+#clinic-dentist-field[hidden] {
+  display: none;
+}
 .doctor-current-schedule {
   margin: 18px 0;
   padding: 16px;
@@ -865,7 +868,12 @@ body.admin-layout {
   font-style: italic;
 }
 .schedule-form-title {
-  margin: 20px 0 12px;
+  margin: 20px 0 4px;
+}
+.schedule-update-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 .tooth-chart-record-summary {
   margin: 10px 0;

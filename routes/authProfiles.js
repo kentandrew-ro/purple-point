@@ -1049,27 +1049,26 @@ function registerAuthProfileRoutes(
       }
 
       const dayPlaceholders = daysOfWeek.map(() => "?").join(", ");
-      const [overlapping] = await conn.execute(
-        `SELECT schedule_id, day_of_week
+      const [existingSchedules] = await conn.execute(
+        `SELECT schedule_id, day_of_week,
+                TIME_FORMAT(start_time, '%H:%i') AS start_time,
+                TIME_FORMAT(end_time, '%H:%i') AS end_time
          FROM dentist_schedule
          WHERE dentist_id = ?
            AND day_of_week IN (${dayPlaceholders})
            AND is_active = TRUE
-           AND start_time < TIME(?)
-           AND end_time > TIME(?)
          FOR UPDATE`,
-        [dentistId, ...daysOfWeek, endTime, startTime],
+        [dentistId, ...daysOfWeek],
       );
-      if (overlapping.length) {
-        await conn.rollback();
-        const overlappingDays = [
-          ...new Set(overlapping.map((schedule) => schedule.day_of_week)),
-        ].join(", ");
-        return res.status(409).json({
-          ok: false,
-          error: `Availability overlaps an existing schedule on: ${overlappingDays}. No days were saved.`,
-        });
-      }
+
+      await conn.execute(
+        `UPDATE dentist_schedule
+         SET is_active = FALSE
+         WHERE dentist_id = ?
+           AND day_of_week IN (${dayPlaceholders})
+           AND is_active = TRUE`,
+        [dentistId, ...daysOfWeek],
+      );
 
       const valuePlaceholders = daysOfWeek
         .map(() => "(?, ?, ?, ?)")
@@ -1091,7 +1090,11 @@ function registerAuthProfileRoutes(
         action: "UPDATE_DENTIST_SCHEDULE",
         entityType: "dentist_schedule",
         entityId: result.insertId,
-        description: `Added availability for dentist #${dentistId} on ${daysOfWeek.join(", ")}`,
+        description: `Updated availability for dentist #${dentistId} on ${daysOfWeek.join(", ")}`,
+        oldValues: {
+          dentist_id: dentistId,
+          schedules: existingSchedules,
+        },
         newValues: {
           dentist_id: dentistId,
           days_of_week: daysOfWeek,
@@ -1101,11 +1104,11 @@ function registerAuthProfileRoutes(
       });
       await conn.commit();
 
-      return res.status(201).json({
+      return res.json({
         ok: true,
         schedule_id: result.insertId,
         schedule_count: daysOfWeek.length,
-        added_days: daysOfWeek,
+        updated_days: daysOfWeek,
       });
     } catch (err) {
       if (conn) await conn.rollback();

@@ -1278,9 +1278,12 @@ async function submitClinicHoursForm(e) {
       throw new Error(data.error || "Failed to save doctor availability");
     }
 
+    const updatedDays = Array.isArray(data.updated_days)
+      ? data.updated_days
+      : [];
     showResult(
       resultBox,
-      `Doctor availability saved for ${data.schedule_count} day${data.schedule_count === 1 ? "" : "s"}: ${data.added_days.join(", ")}.`,
+      `Doctor availability updated for ${data.schedule_count} day${data.schedule_count === 1 ? "" : "s"}: ${updatedDays.join(", ")}.`,
     );
     form.reset();
     if (managementRole === "doctor") await loadDoctorCurrentSchedule();
