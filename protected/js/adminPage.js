@@ -998,12 +998,16 @@ async function searchDentists(query, targetListId) {
     const res = await fetch(
       `/api/dentists/search?q=${encodeURIComponent(query)}`,
     );
-    if (!res.ok) throw new Error("Search failed");
-    const items = await res.json();
+    const items = await res.json().catch(() => []);
+    if (!res.ok) throw new Error("Unable to search dentists.");
     renderDentistSuggestions(items, targetListId);
   } catch (err) {
     console.error(err);
-    renderDentistSuggestions([], targetListId);
+    const list = document.getElementById(targetListId);
+    if (list) {
+      list.innerHTML =
+        '<div style="padding:10px;color:#b42318;">Unable to search dentists.</div>';
+    }
   }
 }
 
@@ -2157,6 +2161,7 @@ async function loadPatientAppointmentsForTreatmentForm(patientId) {
       const opt = document.createElement("option");
       opt.value = a.appointment_id;
       opt.dataset.dentistId = a.dentist_id || "";
+      opt.dataset.doctorName = a.doctor_name || "";
       opt.dataset.date = a.appointment_date;
       const doctor =
         a.doctor_name && a.doctor_name.trim() !== "Dr."
@@ -2371,14 +2376,15 @@ function initDentalRecordsTab() {
   }
 
   if (treatmentDentistSearch) {
-    treatmentDentistSearch.addEventListener(
-      "input",
-      debounce(
-        (e) =>
-          searchDentists(e.target.value || "", "treatment-dentist-suggestions"),
-        200,
-      ),
+    const runTreatmentDentistSearch = debounce(
+      (query) =>
+        searchDentists(query || "", "treatment-dentist-suggestions"),
+      200,
     );
+    treatmentDentistSearch.addEventListener("input", (e) => {
+      document.getElementById("treatment_dentist_id").value = "";
+      runTreatmentDentistSearch(e.target.value || "");
+    });
   }
 
   if (treatmentDentistSuggestions) {
@@ -2399,13 +2405,21 @@ function initDentalRecordsTab() {
   if (treatmentAppointmentSelect) {
     treatmentAppointmentSelect.addEventListener("change", (e) => {
       const opt = e.target.selectedOptions[0];
-      if (!opt || !opt.value) return;
+      if (!opt) return;
+      if (!opt.value) {
+        document.getElementById("treatment_dentist_id").value = "";
+        treatmentDentistSearch.value = "";
+        treatmentDentistSuggestions.innerHTML = "";
+        return;
+      }
       if (opt.dataset.date) {
         document.getElementById("treatment_date").value = opt.dataset.date;
       }
       if (opt.dataset.dentistId) {
         document.getElementById("treatment_dentist_id").value =
           opt.dataset.dentistId;
+        treatmentDentistSearch.value = opt.dataset.doctorName || "";
+        treatmentDentistSuggestions.innerHTML = "";
       }
     });
   }

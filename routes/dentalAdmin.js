@@ -582,7 +582,7 @@ function registerDentalAdminRoutes(app) {
   app.get("/api/dentists/search", async (req, res) => {
     if (!req.session.userId)
       return res.status(401).json({ error: "Not logged in" });
-    if (!requireRole(req, res, ["superadmin", "staff"])) return;
+    if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
 
     try {
       const q = requireField(req.query, "q");
