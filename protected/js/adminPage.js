@@ -136,6 +136,11 @@ async function initializeRoleInterface() {
       document.getElementById("staff-shift-form-card")?.remove();
     }
 
+    if (managementRole === "staff") {
+      document.getElementById("btn-show-cancel")?.remove();
+      document.getElementById("clinic-hours-form-card")?.remove();
+    }
+
     document.body.dataset.role = managementRole;
     document.querySelectorAll(".sidebar a[data-roles]").forEach((link) => {
       const allowedRoles = (link.dataset.roles || "").split(/\s+/);
