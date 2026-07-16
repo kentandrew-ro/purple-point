@@ -63,6 +63,9 @@ function showTab(name) {
   if (name === "audit-logs") loadAuditLogs();
   if (name === "doctor-profiles") loadDoctorStaffSummaries();
   if (name === "set-schedules") configureScheduleInterface();
+  if (name === "patient-info") loadPatientDirectory("info", 1);
+  if (name === "patient-status") loadPatientDirectory("status", 1);
+  if (name === "dental-records") loadPatientDirectory("dental", 1);
 }
 
 function configureScheduleInterface() {
@@ -799,6 +802,7 @@ async function submitPatientInformationEdit(event) {
     }
     result.textContent = "Patient information saved successfully.";
     result.classList.add("success");
+    loadPatientDirectory("info", patientDirectoryState.info.page);
   } catch (error) {
     result.textContent = error.message;
     result.classList.add("error");
@@ -999,6 +1003,7 @@ async function savePatientStatus() {
     }
     message.textContent = "Patient status updated successfully.";
     message.classList.add("success");
+    loadPatientDirectory("status", patientDirectoryState.status.page);
   } catch (error) {
     message.textContent = error.message;
     message.classList.add("error");
@@ -1022,6 +1027,247 @@ async function loadPatientInfoDetails(patientId) {
     console.error(err);
     renderPatientInfoDetails(null);
   }
+}
+
+const PATIENT_DIRECTORY_CONFIG = Object.freeze({
+  info: Object.freeze({
+    prefix: "patient-info",
+    columns: 8,
+    filters: Object.freeze({
+      search: "patient-info-search",
+      status: "patient-info-status-filter",
+      gender: "patient-info-gender-filter",
+      profile: "patient-info-profile-filter",
+    }),
+  }),
+  status: Object.freeze({
+    prefix: "patient-status",
+    columns: 7,
+    filters: Object.freeze({
+      search: "patient-status-search",
+      status: "patient-status-status-filter",
+      profile: "patient-status-profile-filter",
+    }),
+  }),
+  dental: Object.freeze({
+    prefix: "dental",
+    columns: 7,
+    filters: Object.freeze({
+      search: "dental-patient-search",
+      status: "dental-status-filter",
+      records: "dental-records-filter",
+      last_visit_from: "dental-last-visit-from",
+      last_visit_to: "dental-last-visit-to",
+    }),
+  }),
+});
+
+const patientDirectoryState = {
+  info: { page: 1, pages: 1 },
+  status: { page: 1, pages: 1 },
+  dental: { page: 1, pages: 1 },
+};
+
+function patientDirectoryLabel(value) {
+  const normalized = String(value || "").toLowerCase();
+  return normalized
+    ? normalized.charAt(0).toUpperCase() + normalized.slice(1)
+    : "—";
+}
+
+function patientDirectoryName(patient) {
+  return (
+    `${patient.first_name || ""} ${patient.last_name || ""}`.trim() ||
+    `Patient #${patient.patient_id}`
+  );
+}
+
+function renderPatientDirectoryRows(scope, patients) {
+  if (!patients.length) return "";
+  if (scope === "info") {
+    return patients
+      .map(
+        (patient) => `
+          <tr>
+            <td>P-${escapeHtml(String(patient.patient_id).padStart(3, "0"))}</td>
+            <td>${escapeHtml(patientDirectoryName(patient))}</td>
+            <td>${escapeHtml(patient.email || "—")}</td>
+            <td>${escapeHtml(patient.contact_number || "—")}</td>
+            <td>${escapeHtml(patientDirectoryLabel(patient.gender))}</td>
+            <td>${escapeHtml(patientDirectoryLabel(patient.patient_status))}</td>
+            <td>${Number(patient.profile_complete) === 1 ? "Complete" : "Incomplete"}</td>
+            <td><button type="button" class="patient-directory-view-button" data-directory-scope="info" data-patient-id="${escapeHtml(patient.patient_id)}">View/Edit</button></td>
+          </tr>`,
+      )
+      .join("");
+  }
+  if (scope === "status") {
+    return patients
+      .map(
+        (patient) => `
+          <tr>
+            <td>P-${escapeHtml(String(patient.patient_id).padStart(3, "0"))}</td>
+            <td>${escapeHtml(patientDirectoryName(patient))}</td>
+            <td>${escapeHtml(patient.email || "—")}</td>
+            <td>${escapeHtml(patient.contact_number || "—")}</td>
+            <td>${escapeHtml(patientDirectoryLabel(patient.patient_status))}</td>
+            <td>${Number(patient.profile_complete) === 1 ? "Complete" : "Incomplete"}</td>
+            <td><button type="button" class="patient-directory-view-button" data-directory-scope="status" data-patient-id="${escapeHtml(patient.patient_id)}">Manage Status</button></td>
+          </tr>`,
+      )
+      .join("");
+  }
+  return patients
+    .map(
+      (patient) => `
+        <tr>
+          <td>P-${escapeHtml(String(patient.patient_id).padStart(3, "0"))}</td>
+          <td>${escapeHtml(patientDirectoryName(patient))}</td>
+          <td>${escapeHtml(patientDirectoryLabel(patient.patient_status))}</td>
+          <td>${escapeHtml(patient.blood_type || "—")}</td>
+          <td>${escapeHtml(patient.dental_record_count || 0)}</td>
+          <td>${escapeHtml(patient.last_visit_date ? formatDentalDate(patient.last_visit_date) : "No visits")}</td>
+          <td><button type="button" class="patient-directory-view-button" data-directory-scope="dental" data-patient-id="${escapeHtml(patient.patient_id)}">View Records</button></td>
+        </tr>`,
+    )
+    .join("");
+}
+
+async function loadPatientDirectory(scope, page = 1) {
+  const config = PATIENT_DIRECTORY_CONFIG[scope];
+  const state = patientDirectoryState[scope];
+  if (!config || !state) return;
+  if (scope === "dental" && managementRole === "staff") return;
+
+  const tbody = document.getElementById(`${config.prefix}-table-body`);
+  const message = document.getElementById(`${config.prefix}-list-message`);
+  if (!tbody) return;
+
+  state.page = Math.max(1, page);
+  tbody.innerHTML = `<tr><td colspan="${config.columns}">Loading patients...</td></tr>`;
+  if (message) message.textContent = "";
+
+  const params = new URLSearchParams({
+    scope,
+    page: String(state.page),
+    limit: "8",
+  });
+  Object.entries(config.filters).forEach(([queryKey, elementId]) => {
+    const value = document.getElementById(elementId)?.value.trim();
+    if (value) params.set(queryKey, value);
+  });
+
+  try {
+    const response = await fetch(
+      `/api/patients/directory?${params.toString()}`,
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Unable to load patients.");
+    }
+
+    const patients = data.patients || [];
+    state.page = data.pagination?.page || 1;
+    state.pages = data.pagination?.pages || 1;
+    tbody.innerHTML = patients.length
+      ? renderPatientDirectoryRows(scope, patients)
+      : `<tr><td colspan="${config.columns}">No patients found.</td></tr>`;
+
+    const summary = document.getElementById(
+      `${config.prefix}-pagination-summary`,
+    );
+    if (summary) {
+      summary.textContent = `Page ${state.page} of ${state.pages} | ${data.pagination?.total || 0} patients`;
+    }
+    const previous = document.getElementById(
+      `${config.prefix}-previous-page`,
+    );
+    const next = document.getElementById(`${config.prefix}-next-page`);
+    if (previous) previous.disabled = state.page <= 1;
+    if (next) next.disabled = state.page >= state.pages;
+  } catch (error) {
+    tbody.innerHTML = `<tr><td colspan="${config.columns}">Unable to load patients.</td></tr>`;
+    if (message) message.textContent = error.message;
+  }
+}
+
+function openPatientDirectoryDetails(scope, patientId) {
+  if (scope === "info") {
+    loadPatientInfoDetails(patientId).then(() => {
+      document.getElementById("patient-info-details")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  } else if (scope === "status") {
+    loadPatientStatus(patientId).then(() => {
+      document.getElementById("patient-status-editor")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  } else if (scope === "dental") {
+    loadDentalPatientRecord(patientId).then(() => {
+      document.getElementById("dental-record-card")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }
+}
+
+function initPatientDirectories() {
+  Object.entries(PATIENT_DIRECTORY_CONFIG).forEach(([scope, config]) => {
+    const state = patientDirectoryState[scope];
+    document
+      .getElementById(config.filters.search)
+      ?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") loadPatientDirectory(scope, 1);
+      });
+    document
+      .getElementById(`${config.prefix}-apply-filters`)
+      ?.addEventListener("click", () => {
+        loadPatientDirectory(scope, 1);
+        document
+          .getElementById(`${config.prefix}-filter-panel`)
+          ?.removeAttribute("open");
+      });
+    document
+      .getElementById(`${config.prefix}-reset-filters`)
+      ?.addEventListener("click", () => {
+        Object.values(config.filters).forEach((elementId) => {
+          const element = document.getElementById(elementId);
+          if (element) element.value = "";
+        });
+        loadPatientDirectory(scope, 1);
+        document
+          .getElementById(`${config.prefix}-filter-panel`)
+          ?.removeAttribute("open");
+      });
+    document
+      .getElementById(`${config.prefix}-previous-page`)
+      ?.addEventListener("click", () => {
+        if (state.page > 1) loadPatientDirectory(scope, state.page - 1);
+      });
+    document
+      .getElementById(`${config.prefix}-next-page`)
+      ?.addEventListener("click", () => {
+        if (state.page < state.pages) {
+          loadPatientDirectory(scope, state.page + 1);
+        }
+      });
+    document
+      .getElementById(`${config.prefix}-table-body`)
+      ?.addEventListener("click", (event) => {
+        const button = event.target.closest(".patient-directory-view-button");
+        if (button) {
+          openPatientDirectoryDetails(
+            button.dataset.directoryScope,
+            button.dataset.patientId,
+          );
+        }
+      });
+  });
 }
 
 async function searchDentists(query, targetListId) {
@@ -1712,7 +1958,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const patientInfoSuggestions = document.getElementById(
     "patient-info-suggestions",
   );
-  if (patientInfoSearch) {
+  if (patientInfoSearch && patientInfoSuggestions) {
     patientInfoSearch.addEventListener(
       "input",
       debounce((e) => searchPatientInfo(e.target.value || ""), 200),
@@ -1735,7 +1981,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const patientStatusSuggestions = document.getElementById(
     "patient-status-suggestions",
   );
-  if (patientStatusSearch) {
+  if (patientStatusSearch && patientStatusSuggestions) {
     patientStatusSearch.addEventListener(
       "input",
       debounce((event) => searchPatientStatus(event.target.value || ""), 200),
@@ -1831,6 +2077,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  initPatientDirectories();
   initDentalRecordsTab();
   initBillingTab();
   initAuditLogsTab();
@@ -2402,7 +2649,7 @@ function initDentalRecordsTab() {
   const searchInput = document.getElementById("dental-patient-search");
   const suggestions = document.getElementById("dental-patient-suggestions");
 
-  if (searchInput) {
+  if (searchInput && suggestions) {
     searchInput.addEventListener(
       "input",
       debounce((e) => searchDentalPatients(e.target.value || ""), 200),

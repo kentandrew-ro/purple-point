@@ -455,37 +455,157 @@
         </div>
       </div>
 
-      <div id="tab-patient-info" style="display: none">
+      <div id="tab-patient-info" class="audit-page" style="display: none">
         <h2>Patient Information</h2>
-        <div class="card" style="margin-top: 16px">
-          <div style="position: relative" class="field">
-            <label for="patient-info-search">Search patient</label>
+        <div class="audit-toolbar">
+          <div class="audit-search-field">
+            <label for="patient-info-search">Search</label>
             <input
               id="patient-info-search"
-              type="text"
-              placeholder="Search by name, contact, or email"
-              autocomplete="off"
-              style="width: 100%; box-sizing: border-box"
+              type="search"
+              placeholder="Patient ID, name, email, or contact"
             />
-            <div id="patient-info-suggestions" class="suggestions"></div>
           </div>
-          <div id="patient-info-details" style="margin-top: 16px"></div>
+
+          <details class="audit-filter-panel" id="patient-info-filter-panel">
+            <summary>Filter options</summary>
+            <div class="audit-filter-content">
+              <div class="audit-filter-field">
+                <label for="patient-info-status-filter">Status</label>
+                <select id="patient-info-status-filter">
+                  <option value="">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+              <div class="audit-filter-field">
+                <label for="patient-info-gender-filter">Gender</label>
+                <select id="patient-info-gender-filter">
+                  <option value="">All genders</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
+              </div>
+              <div class="audit-filter-field">
+                <label for="patient-info-profile-filter">Profile</label>
+                <select id="patient-info-profile-filter">
+                  <option value="">All profiles</option>
+                  <option value="complete">Complete</option>
+                  <option value="incomplete">Incomplete</option>
+                </select>
+              </div>
+              <div class="audit-filter-actions">
+                <button type="button" id="patient-info-apply-filters">Apply Filters</button>
+                <button type="button" id="patient-info-reset-filters" class="secondary">Reset</button>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <p id="patient-info-list-message" class="directory-list-message" aria-live="polite"></p>
+        <div class="audit-table-scroll">
+          <table class="audit-log-table patient-directory-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Patient</th>
+                <th>Email</th>
+                <th>Contact</th>
+                <th>Gender</th>
+                <th>Status</th>
+                <th>Profile</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="patient-info-table-body">
+              <tr><td colspan="8">Open this tab to load patients.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="audit-pagination">
+          <p id="patient-info-pagination-summary"></p>
+          <div class="audit-pagination-actions">
+            <button type="button" id="patient-info-previous-page">Previous</button>
+            <button type="button" id="patient-info-next-page">Next</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 16px">
+          <div id="patient-info-details">
+            <p class="muted-copy">Select View/Edit to display patient information.</p>
+          </div>
         </div>
       </div>
-      <div id="tab-patient-status" style="display: none">
+      <div id="tab-patient-status" class="audit-page" style="display: none">
         <h2>Patient Status</h2>
         <p>Update whether a patient is active, inactive, or archived.</p>
-        <div class="card" style="margin-top: 16px">
-          <div class="field" style="position: relative">
-            <label for="patient-status-search">Search patient</label>
+        <div class="audit-toolbar">
+          <div class="audit-search-field">
+            <label for="patient-status-search">Search</label>
             <input
               id="patient-status-search"
-              type="text"
-              placeholder="Search by name, contact, or email"
-              autocomplete="off"
+              type="search"
+              placeholder="Patient ID, name, email, or contact"
             />
-            <div id="patient-status-suggestions" class="suggestions"></div>
           </div>
+
+          <details class="audit-filter-panel" id="patient-status-filter-panel">
+            <summary>Filter options</summary>
+            <div class="audit-filter-content">
+              <div class="audit-filter-field">
+                <label for="patient-status-status-filter">Status</label>
+                <select id="patient-status-status-filter">
+                  <option value="">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+              <div class="audit-filter-field">
+                <label for="patient-status-profile-filter">Profile</label>
+                <select id="patient-status-profile-filter">
+                  <option value="">All profiles</option>
+                  <option value="complete">Complete</option>
+                  <option value="incomplete">Incomplete</option>
+                </select>
+              </div>
+              <div class="audit-filter-actions">
+                <button type="button" id="patient-status-apply-filters">Apply Filters</button>
+                <button type="button" id="patient-status-reset-filters" class="secondary">Reset</button>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <p id="patient-status-list-message" class="directory-list-message" aria-live="polite"></p>
+        <div class="audit-table-scroll">
+          <table class="audit-log-table patient-directory-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Patient</th>
+                <th>Email</th>
+                <th>Contact</th>
+                <th>Current Status</th>
+                <th>Profile</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="patient-status-table-body">
+              <tr><td colspan="7">Open this tab to load patients.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="audit-pagination">
+          <p id="patient-status-pagination-summary"></p>
+          <div class="audit-pagination-actions">
+            <button type="button" id="patient-status-previous-page">Previous</button>
+            <button type="button" id="patient-status-next-page">Next</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 16px">
           <div id="patient-status-editor" style="display: none; margin-top: 18px">
             <h3 id="patient-status-name"></h3>
             <input id="patient-status-id" type="hidden" />
@@ -504,21 +624,80 @@
           <div id="patient-status-message" class="form-message" aria-live="polite"></div>
         </div>
       </div>
-      <div id="tab-dental-records" style="display: none">
+      <div id="tab-dental-records" class="audit-page" style="display: none">
         <h2>Dental Records</h2>
-        <p>dental records area are foudn here.</p>
+        <p>Search patients and open their tooth charts, treatments, and vitals.</p>
 
-        <div class="card">
-          <div class="field" style="position: relative">
-            <label for="dental-patient-search">Search Patient</label>
+        <div class="audit-toolbar">
+          <div class="audit-search-field">
+            <label for="dental-patient-search">Search</label>
             <input
               id="dental-patient-search"
-              type="text"
-              placeholder="Name or Patient ID..."
-              autocomplete="off"
-              style="width: 100%; box-sizing: border-box"
+              type="search"
+              placeholder="Patient ID, name, email, or contact"
             />
-            <div id="dental-patient-suggestions" class="suggestions"></div>
+          </div>
+
+          <details class="audit-filter-panel" id="dental-filter-panel">
+            <summary>Filter options</summary>
+            <div class="audit-filter-content">
+              <div class="audit-filter-field">
+                <label for="dental-status-filter">Status</label>
+                <select id="dental-status-filter">
+                  <option value="">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+              <div class="audit-filter-field">
+                <label for="dental-records-filter">Records</label>
+                <select id="dental-records-filter">
+                  <option value="">With or without records</option>
+                  <option value="with_records">With dental records</option>
+                  <option value="without_records">Without dental records</option>
+                </select>
+              </div>
+              <div class="audit-filter-field">
+                <label for="dental-last-visit-from">Last visit from</label>
+                <input id="dental-last-visit-from" type="date" />
+              </div>
+              <div class="audit-filter-field">
+                <label for="dental-last-visit-to">Last visit to</label>
+                <input id="dental-last-visit-to" type="date" />
+              </div>
+              <div class="audit-filter-actions">
+                <button type="button" id="dental-apply-filters">Apply Filters</button>
+                <button type="button" id="dental-reset-filters" class="secondary">Reset</button>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <p id="dental-list-message" class="directory-list-message" aria-live="polite"></p>
+        <div class="audit-table-scroll">
+          <table class="audit-log-table patient-directory-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Patient</th>
+                <th>Status</th>
+                <th>Blood Type</th>
+                <th>Records</th>
+                <th>Latest Visit</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="dental-table-body">
+              <tr><td colspan="7">Open this tab to load patients.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="audit-pagination">
+          <p id="dental-pagination-summary"></p>
+          <div class="audit-pagination-actions">
+            <button type="button" id="dental-previous-page">Previous</button>
+            <button type="button" id="dental-next-page">Next</button>
           </div>
         </div>
 

@@ -3,6 +3,7 @@
 const { pool } = require("../lib/database");
 const {
   INTERNAL_ERROR_MESSAGE,
+  normalizeRole,
   requireField,
   requireRole,
 } = require("../lib/http");
@@ -135,6 +136,179 @@ function registerDentalAdminRoutes(app) {
     } catch (err) {
       console.error(err);
       return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
+    }
+  });
+
+  app.get("/api/patients/directory", async (req, res) => {
+    if (!req.session.userId)
+      return res.status(401).json({ error: "Not logged in" });
+    if (!requireRole(req, res, ["superadmin", "doctor", "staff"])) return;
+
+    const scope = (requireField(req.query, "scope") || "info").toLowerCase();
+    const search = requireField(req.query, "search") || "";
+    const status = (requireField(req.query, "status") || "").toLowerCase();
+    const gender = (requireField(req.query, "gender") || "").toLowerCase();
+    const profile = (requireField(req.query, "profile") || "").toLowerCase();
+    const records = (requireField(req.query, "records") || "").toLowerCase();
+    const lastVisitFrom = requireField(req.query, "last_visit_from") || "";
+    const lastVisitTo = requireField(req.query, "last_visit_to") || "";
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.parseInt(req.query.limit, 10) || 8),
+    );
+
+    if (!["info", "status", "dental"].includes(scope)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Invalid patient directory scope." });
+    }
+    if (scope === "dental" && normalizeRole(req.session.role) === "staff") {
+      return res.status(403).json({
+        ok: false,
+        error: "Staff accounts cannot access dental records.",
+      });
+    }
+    if (status && !["active", "inactive", "archived"].includes(status)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Invalid patient status filter." });
+    }
+    if (gender && !["male", "female"].includes(gender)) {
+      return res.status(400).json({ ok: false, error: "Invalid gender filter." });
+    }
+    if (profile && !["complete", "incomplete"].includes(profile)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Invalid profile filter." });
+    }
+    if (records && !["with_records", "without_records"].includes(records)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Invalid dental-record filter." });
+    }
+    if (scope !== "dental" && (records || lastVisitFrom || lastVisitTo)) {
+      return res.status(400).json({
+        ok: false,
+        error: "Dental-record filters require dental-record access.",
+      });
+    }
+    if (
+      (lastVisitFrom && !isIsoDate(lastVisitFrom)) ||
+      (lastVisitTo && !isIsoDate(lastVisitTo)) ||
+      (lastVisitFrom && lastVisitTo && lastVisitFrom > lastVisitTo)
+    ) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Invalid last-visit date filter." });
+    }
+
+    const where = [];
+    const params = [];
+    const profileCompleteSql = `(
+      pr.patient_records_id IS NOT NULL
+      AND ec.emergency_contact_id IS NOT NULL
+      AND NULLIF(TRIM(ec.contact_name), '') IS NOT NULL
+      AND NULLIF(TRIM(ec.contact_number), '') IS NOT NULL
+    )`;
+
+    if (search) {
+      const term = `%${search}%`;
+      where.push(`(
+        CAST(p.patient_id AS CHAR) LIKE ?
+        OR u.first_name LIKE ?
+        OR u.last_name LIKE ?
+        OR CONCAT(u.first_name, ' ', u.last_name) LIKE ?
+        OR u.email LIKE ?
+        OR u.contact_number LIKE ?
+      )`);
+      params.push(term, term, term, term, term, term);
+    }
+    if (status) {
+      where.push("COALESCE(pr.patient_status, 'active') = ?");
+      params.push(status);
+    }
+    if (gender) {
+      where.push("p.gender = ?");
+      params.push(gender);
+    }
+    if (profile === "complete") where.push(profileCompleteSql);
+    if (profile === "incomplete") where.push(`NOT ${profileCompleteSql}`);
+    if (records === "with_records") {
+      where.push("COALESCE(drs.dental_record_count, 0) > 0");
+    }
+    if (records === "without_records") {
+      where.push("COALESCE(drs.dental_record_count, 0) = 0");
+    }
+    if (lastVisitFrom) {
+      where.push("drs.last_visit_date >= ?");
+      params.push(lastVisitFrom);
+    }
+    if (lastVisitTo) {
+      where.push("drs.last_visit_date <= ?");
+      params.push(lastVisitTo);
+    }
+
+    const fromSql = `
+      FROM patients p
+      JOIN users u ON u.user_id = p.user_id
+      LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
+      LEFT JOIN emergency_contacts ec ON ec.patient_id = p.patient_id
+      LEFT JOIN (
+        SELECT patient_id, COUNT(*) AS dental_record_count,
+               MAX(visit_date) AS last_visit_date
+        FROM dental_records
+        GROUP BY patient_id
+      ) drs ON drs.patient_id = p.patient_id
+      LEFT JOIN (
+        SELECT patient_id, COUNT(*) AS appointment_count
+        FROM appointments
+        GROUP BY patient_id
+      ) aps ON aps.patient_id = p.patient_id`;
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const offset = (page - 1) * limit;
+
+    try {
+      const [[countRow]] = await pool.execute(
+        `SELECT COUNT(*) AS total ${fromSql} ${whereSql}`,
+        params,
+      );
+      const [rows] = await pool.execute(
+        `SELECT p.patient_id, u.first_name, u.last_name,
+                u.email, u.contact_number,
+                DATE_FORMAT(p.date_of_birth, '%Y-%m-%d') AS date_of_birth,
+                p.gender, p.blood_type,
+                COALESCE(pr.patient_status, 'active') AS patient_status,
+                CASE WHEN ${profileCompleteSql} THEN 1 ELSE 0 END AS profile_complete,
+                COALESCE(drs.dental_record_count, 0) AS dental_record_count,
+                DATE_FORMAT(drs.last_visit_date, '%Y-%m-%d') AS last_visit_date,
+                COALESCE(aps.appointment_count, 0) AS appointment_count
+         ${fromSql}
+         ${whereSql}
+         ORDER BY u.last_name, u.first_name, p.patient_id
+         LIMIT ${limit} OFFSET ${offset}`,
+        params,
+      );
+      const total = Number(countRow.total);
+      const patients =
+        scope === "dental"
+          ? rows
+          : rows.map(
+              ({ dental_record_count, last_visit_date, ...patient }) => patient,
+            );
+      return res.json({
+        ok: true,
+        patients,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.max(1, Math.ceil(total / limit)),
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
     }
   });
 

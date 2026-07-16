@@ -1061,6 +1061,9 @@ body.admin-layout {
 #audit-list-message:empty {
   display: none;
 }
+.directory-list-message:empty {
+  display: none;
+}
 .audit-table-scroll {
   width: 100%;
   overflow-x: auto;
@@ -1104,6 +1107,23 @@ body.admin-layout {
   width: 72px;
 }
 .audit-log-table .audit-view-button {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 0.76rem;
+}
+.admin-layout .content .patient-directory-table {
+  min-width: 860px;
+}
+.patient-directory-table th:nth-child(1) {
+  width: 76px;
+}
+.patient-directory-table th:nth-child(2) {
+  width: 155px;
+}
+.patient-directory-table th:last-child {
+  width: 105px;
+}
+.patient-directory-table .patient-directory-view-button {
   min-height: 30px;
   padding: 4px 10px;
   font-size: 0.76rem;
