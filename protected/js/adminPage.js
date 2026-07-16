@@ -705,7 +705,7 @@ function renderPatientInfoDetails(patient) {
           <input id="patient-edit-date-of-birth" value="${escapeHtml(dob)}" readonly />
         </div>
         <div class="field">
-          <label for="patient-edit-gender">Gender</label>
+          <label for="patient-edit-gender">Sex</label>
           <input id="patient-edit-gender" value="${escapeHtml(patient.gender || "")}" readonly />
         </div>
         <div class="field">
@@ -1063,9 +1063,9 @@ const PATIENT_DIRECTORY_CONFIG = Object.freeze({
 });
 
 const patientDirectoryState = {
-  info: { page: 1, pages: 1 },
-  status: { page: 1, pages: 1 },
-  dental: { page: 1, pages: 1 },
+  info: { page: 1, pages: 1, requestId: 0 },
+  status: { page: 1, pages: 1, requestId: 0 },
+  dental: { page: 1, pages: 1, requestId: 0 },
 };
 
 function patientDirectoryLabel(value) {
@@ -1144,6 +1144,7 @@ async function loadPatientDirectory(scope, page = 1) {
   if (!tbody) return;
 
   state.page = Math.max(1, page);
+  const requestId = ++state.requestId;
   tbody.innerHTML = `<tr><td colspan="${config.columns}">Loading patients...</td></tr>`;
   if (message) message.textContent = "";
 
@@ -1162,6 +1163,7 @@ async function loadPatientDirectory(scope, page = 1) {
       `/api/patients/directory?${params.toString()}`,
     );
     const data = await response.json().catch(() => ({}));
+    if (requestId !== state.requestId) return;
     if (!response.ok || !data.ok) {
       throw new Error(data.error || "Unable to load patients.");
     }
@@ -1186,6 +1188,7 @@ async function loadPatientDirectory(scope, page = 1) {
     if (previous) previous.disabled = state.page <= 1;
     if (next) next.disabled = state.page >= state.pages;
   } catch (error) {
+    if (requestId !== state.requestId) return;
     tbody.innerHTML = `<tr><td colspan="${config.columns}">Unable to load patients.</td></tr>`;
     if (message) message.textContent = error.message;
   }
@@ -1219,11 +1222,14 @@ function openPatientDirectoryDetails(scope, patientId) {
 function initPatientDirectories() {
   Object.entries(PATIENT_DIRECTORY_CONFIG).forEach(([scope, config]) => {
     const state = patientDirectoryState[scope];
-    document
-      .getElementById(config.filters.search)
-      ?.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") loadPatientDirectory(scope, 1);
-      });
+    const searchInput = document.getElementById(config.filters.search);
+    searchInput?.addEventListener(
+      "input",
+      debounce(() => loadPatientDirectory(scope, 1), 250),
+    );
+    searchInput?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") loadPatientDirectory(scope, 1);
+    });
     document
       .getElementById(`${config.prefix}-apply-filters`)
       ?.addEventListener("click", () => {

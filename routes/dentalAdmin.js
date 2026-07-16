@@ -175,7 +175,7 @@ function registerDentalAdminRoutes(app) {
         .json({ ok: false, error: "Invalid patient status filter." });
     }
     if (gender && !["male", "female"].includes(gender)) {
-      return res.status(400).json({ ok: false, error: "Invalid gender filter." });
+      return res.status(400).json({ ok: false, error: "Invalid sex filter." });
     }
     if (profile && !["complete", "incomplete"].includes(profile)) {
       return res
@@ -214,15 +214,47 @@ function registerDentalAdminRoutes(app) {
 
     if (search) {
       const term = `%${search}%`;
-      where.push(`(
-        CAST(p.patient_id AS CHAR) LIKE ?
-        OR u.first_name LIKE ?
-        OR u.last_name LIKE ?
-        OR CONCAT(u.first_name, ' ', u.last_name) LIKE ?
-        OR u.email LIKE ?
-        OR u.contact_number LIKE ?
-      )`);
-      params.push(term, term, term, term, term, term);
+      const searchConditions = [
+        "CAST(p.patient_id AS CHAR) LIKE ?",
+        `CONCAT(
+          'P-',
+          CASE
+            WHEN p.patient_id < 1000 THEN LPAD(p.patient_id, 3, '0')
+            ELSE CAST(p.patient_id AS CHAR)
+          END
+        ) LIKE ?`,
+        "u.first_name LIKE ?",
+        "u.last_name LIKE ?",
+        "CONCAT(u.first_name, ' ', u.last_name) LIKE ?",
+        "u.email LIKE ?",
+        "u.contact_number LIKE ?",
+      ];
+      const searchParams = [term, term, term, term, term, term, term];
+      const patientIdMatch = search.match(/^(?:P-)?0*(\d+)$/i);
+      if (patientIdMatch) {
+        searchConditions.push("p.patient_id = ?");
+        searchParams.push(Number(patientIdMatch[1]));
+      }
+      const contactDigits = search.replace(/\D/g, "");
+      if (contactDigits) {
+        searchConditions.push(`
+          REPLACE(
+            REPLACE(
+              REPLACE(
+                REPLACE(
+                  REPLACE(u.contact_number, ' ', ''),
+                  '-', ''
+                ),
+                '(', ''
+              ),
+              ')', ''
+            ),
+            '+', ''
+          ) LIKE ?`);
+        searchParams.push(`%${contactDigits}%`);
+      }
+      where.push(`(${searchConditions.join(" OR ")})`);
+      params.push(...searchParams);
     }
     if (status) {
       where.push("COALESCE(pr.patient_status, 'active') = ?");
@@ -2083,7 +2115,7 @@ function registerDentalAdminRoutes(app) {
       if (!user_id) missing.push("user_id");
       if (!role) missing.push("role");
       if (!date_of_birth) missing.push("date_of_birth");
-      if (!gender) missing.push("gender (male/female)");
+      if (!gender) missing.push("sex (male/female)");
       if (!hire_date) missing.push("hire_date");
       if (role === "doctor") {
         if (!specialization) missing.push("specialization");

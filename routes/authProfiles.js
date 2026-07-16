@@ -347,13 +347,13 @@ function registerAuthProfileRoutes(
         return res.status(409).json({
           ok: false,
           error:
-            "First name, last name, date of birth, gender, and blood type cannot be changed after profile creation.",
+            "First name, last name, date of birth, sex, and blood type cannot be changed after profile creation.",
         });
       }
 
       const missing = [];
       if (!date_of_birth) missing.push("date_of_birth");
-      if (!gender) missing.push("gender");
+      if (!gender) missing.push("sex");
       if (!contact_number) missing.push("contact_number");
       if (!house_no) missing.push("house_no");
       if (!street) missing.push("street");
@@ -373,7 +373,7 @@ function registerAuthProfileRoutes(
 
       const normalizedGender = gender.toLowerCase();
       if (!["male", "female"].includes(normalizedGender)) {
-        return res.status(400).json({ ok: false, error: "Invalid gender." });
+        return res.status(400).json({ ok: false, error: "Invalid sex." });
       }
 
       const normalizedPatientStatus = patient_status.toLowerCase();
@@ -528,7 +528,7 @@ function registerAuthProfileRoutes(
       const missing = [];
       if (!user_id) missing.push("user_id");
       if (!date_of_birth) missing.push("date_of_birth");
-      if (!gender) missing.push("gender (male/female)");
+      if (!gender) missing.push("sex (male/female)");
       if (!house_no) missing.push("house_no");
       if (!street) missing.push("street");
       if (!barangay) missing.push("barangay");
@@ -614,7 +614,7 @@ function registerAuthProfileRoutes(
       const missing = [];
       if (!user_id) missing.push("user_id");
       if (!date_of_birth) missing.push("date_of_birth");
-      if (!gender) missing.push("gender (male/female)");
+      if (!gender) missing.push("sex (male/female)");
       if (!shift_schedule) missing.push("shift_schedule");
       if (!hire_date) missing.push("hire_date");
 
@@ -716,7 +716,7 @@ function registerAuthProfileRoutes(
       const missing = [];
       if (!user_id) missing.push("user_id");
       if (!date_of_birth) missing.push("date_of_birth");
-      if (!gender) missing.push("gender (male/female)");
+      if (!gender) missing.push("sex (male/female)");
       if (!hire_date) missing.push("hire_date");
       if (!specialization) missing.push("specialization");
       if (!license_number) missing.push("license_number");

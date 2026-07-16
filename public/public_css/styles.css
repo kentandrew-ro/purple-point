@@ -1128,6 +1128,30 @@ body.admin-layout {
   padding: 4px 10px;
   font-size: 0.76rem;
 }
+.patient-info-directory-table th:nth-child(1) {
+  width: 7%;
+}
+.patient-info-directory-table th:nth-child(2) {
+  width: 19%;
+}
+.patient-info-directory-table th:nth-child(3) {
+  width: 22%;
+}
+.patient-info-directory-table th:nth-child(4) {
+  width: 14%;
+}
+.patient-info-directory-table th:nth-child(5) {
+  width: 8%;
+}
+.patient-info-directory-table th:nth-child(6) {
+  width: 10%;
+}
+.patient-info-directory-table th:nth-child(7) {
+  width: 12%;
+}
+.patient-info-directory-table th:nth-child(8) {
+  width: 8%;
+}
 .audit-pagination {
   display: flex;
   align-items: center;
