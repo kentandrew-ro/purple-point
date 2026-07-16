@@ -10,12 +10,16 @@ const {
   APPOINTMENT_TYPES,
   doctorMatchesAppointmentType,
   getDoctorProfileValidationError,
+  isEmergencyAppointmentTime,
   isValidEmail,
   isIsoDate,
   parsePositiveInteger,
   validateGender,
 } = require("../lib/businessRules");
 const { createAuditLog, recordAudit } = require("../lib/audit");
+
+const EMERGENCY_WINDOW_ERROR =
+  "Emergency appointments are only available from 6:00 AM to before 9:00 AM and from 4:00 PM to before 6:00 PM.";
 const {
   getAllergyValidationError,
   normalizeAllergies,
@@ -534,6 +538,40 @@ function registerDentalAdminRoutes(app) {
             .json({ error: "Invalid appointment date or time." });
         }
 
+        if (appointmentType === "emergency") {
+          if (!isEmergencyAppointmentTime(appointmentTime)) {
+            return res.status(409).json({ error: EMERGENCY_WINDOW_ERROR });
+          }
+
+          const [emergencyDoctors] = await pool.execute(
+            `SELECT d.dentist_id, u.first_name, u.last_name,
+                    d.specialization, d.license_number,
+                    DATE_FORMAT(d.hire_date, '%Y-%m-%d') AS hire_date,
+                    NOT EXISTS (
+                      SELECT 1
+                      FROM appointments a
+                      WHERE a.dentist_id = d.dentist_id
+                        AND a.appointment_date = ?
+                        AND a.appointment_time = ?
+                        AND a.appointment_status <> 'cancelled'
+                    ) AS is_available
+             FROM emergency_duty_assignment eda
+             JOIN dentist d ON d.dentist_id = eda.dentist_id
+             JOIN users u ON u.user_id = d.user_id
+             WHERE eda.assignment_id = 1`,
+            [appointmentDate, appointmentTime],
+          );
+          if (!emergencyDoctors.length) {
+            return res.status(409).json({
+              error:
+                "Emergency booking is unavailable until a superadmin assigns an emergency doctor.",
+            });
+          }
+          if (!emergencyDoctors[0].is_available) return res.json([]);
+          delete emergencyDoctors[0].is_available;
+          return res.json(emergencyDoctors);
+        }
+
         const [availableRows] = await pool.execute(
           `SELECT DISTINCT d.dentist_id, u.first_name, u.last_name,
                   d.specialization, d.license_number,
@@ -563,6 +601,19 @@ function registerDentalAdminRoutes(app) {
           ],
         );
         return res.json(filterByAppointmentType(availableRows));
+      }
+
+      if (appointmentType === "emergency") {
+        const [emergencyDoctors] = await pool.execute(
+          `SELECT d.dentist_id, u.first_name, u.last_name,
+                  d.specialization, d.license_number,
+                  DATE_FORMAT(d.hire_date, '%Y-%m-%d') AS hire_date
+           FROM emergency_duty_assignment eda
+           JOIN dentist d ON d.dentist_id = eda.dentist_id
+           JOIN users u ON u.user_id = d.user_id
+           WHERE eda.assignment_id = 1`,
+        );
+        return res.json(emergencyDoctors);
       }
 
       const [rows] = await pool.execute(
@@ -613,6 +664,97 @@ function registerDentalAdminRoutes(app) {
     } catch (err) {
       console.error(err);
       return res.status(500).json({ error: INTERNAL_ERROR_MESSAGE });
+    }
+  });
+
+  app.get("/api/emergency-doctor", async (req, res) => {
+    if (!req.session.userId)
+      return res.status(401).json({ error: "Not logged in" });
+
+    try {
+      const [rows] = await pool.execute(
+        `SELECT d.dentist_id, u.first_name, u.last_name, d.specialization,
+                eda.updated_at
+         FROM emergency_duty_assignment eda
+         JOIN dentist d ON d.dentist_id = eda.dentist_id
+         JOIN users u ON u.user_id = d.user_id
+         WHERE eda.assignment_id = 1`,
+      );
+      return res.json({ ok: true, doctor: rows[0] || null });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    }
+  });
+
+  app.patch("/api/emergency-doctor", async (req, res) => {
+    if (!req.session.userId)
+      return res.status(401).json({ error: "Not logged in" });
+    if (!requireRole(req, res, ["superadmin"])) return;
+
+    const body = req.body || {};
+    if (!Object.prototype.hasOwnProperty.call(body, "dentist_id")) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "dentist_id is required." });
+    }
+    const requestedDentistId = requireField(body, "dentist_id");
+    const dentistId = requestedDentistId
+      ? parsePositiveInteger(requestedDentistId)
+      : null;
+    if (requestedDentistId && !dentistId) {
+      return res.status(400).json({ ok: false, error: "Invalid dentist ID." });
+    }
+
+    try {
+      if (dentistId) {
+        const [dentists] = await pool.execute(
+          "SELECT dentist_id FROM dentist WHERE dentist_id = ?",
+          [dentistId],
+        );
+        if (!dentists.length) {
+          return res.status(404).json({ ok: false, error: "Dentist not found." });
+        }
+      }
+
+      const [currentRows] = await pool.execute(
+        `SELECT dentist_id
+         FROM emergency_duty_assignment
+         WHERE assignment_id = 1`,
+      );
+      const previousDentistId = currentRows[0]?.dentist_id || null;
+
+      await pool.execute(
+        `INSERT INTO emergency_duty_assignment
+           (assignment_id, dentist_id, assigned_by)
+         VALUES (1, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           dentist_id = VALUES(dentist_id),
+           assigned_by = VALUES(assigned_by)`,
+        [dentistId, req.session.userId],
+      );
+
+      await recordAudit(req, {
+        action: "ASSIGN_EMERGENCY_DOCTOR",
+        entityType: "emergency_duty_assignment",
+        entityId: 1,
+        description: dentistId
+          ? `Assigned dentist #${dentistId} to emergency duty`
+          : "Cleared the emergency-duty doctor assignment",
+        oldValues: { dentist_id: previousDentistId },
+        newValues: { dentist_id: dentistId },
+      });
+
+      return res.json({
+        ok: true,
+        dentist_id: dentistId,
+        message: dentistId
+          ? "Emergency doctor updated. Existing appointments were not changed."
+          : "Emergency doctor cleared. Emergency booking is now unavailable.",
+      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
     }
   });
 

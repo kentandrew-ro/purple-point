@@ -396,6 +396,16 @@ async function loadDentists(dateTimeValue, appointmentType) {
   return response.json();
 }
 
+function isEmergencyAppointmentTime(timeStr) {
+  const match = String(timeStr || "").match(/^(\d{2}):(\d{2})/);
+  if (!match) return false;
+  const minutes = Number(match[1]) * 60 + Number(match[2]);
+  return (
+    (minutes >= 6 * 60 && minutes < 9 * 60) ||
+    (minutes >= 16 * 60 && minutes < 18 * 60)
+  );
+}
+
 async function loadDentistSchedules(selectedDentistId = "") {
   const container = document.getElementById("dentist-schedule-sidebar");
   if (!container) return;
@@ -454,11 +464,28 @@ async function loadDentistSchedules(selectedDentistId = "") {
   }
 }
 
+function renderEmergencyBookingInfo(dentists = []) {
+  const container = document.getElementById("dentist-schedule-sidebar");
+  if (!container) return;
+  const doctor = dentists[0];
+  const assignment = doctor
+    ? `<p><strong>Assigned doctor:</strong> Dr. ${escapeHtml(`${doctor.first_name} ${doctor.last_name}`)}</p>`
+    : "<p>No emergency doctor is available for this time.</p>";
+  container.innerHTML = `
+    <section class="dentist-schedule-card is-selected">
+      <strong>Emergency booking hours</strong>
+      <p>6:00 AM–9:00 AM and 4:00 PM–6:00 PM</p>
+      <p class="form-hint">Bookings at exactly 9:00 AM or 6:00 PM are not included.</p>
+      ${assignment}
+    </section>`;
+}
+
 async function populateDentistDropdown() {
   const form = document.getElementById("add-appointment-form");
   const select = form?.elements?.dentist_id;
   const dateTimeValue = form?.elements?.appointment_date?.value || "";
   const appointmentType = form?.elements?.appointment_type?.value || "";
+  const isEmergency = appointmentType === "emergency";
   if (!select) return;
 
   if (!dateTimeValue || !appointmentType) {
@@ -469,7 +496,8 @@ async function populateDentistDropdown() {
         : "Choose a date and time first";
     select.innerHTML = `<option value="">${instruction}</option>`;
     select.disabled = true;
-    loadDentistSchedules("");
+    if (isEmergency) renderEmergencyBookingInfo();
+    else loadDentistSchedules("");
     return;
   }
 
@@ -486,8 +514,12 @@ async function populateDentistDropdown() {
       return;
     }
     select.innerHTML = dentists.length
-      ? '<option value="">Select an available doctor</option>'
-      : '<option value="">No available doctors match this type and time</option>';
+      ? isEmergency
+        ? '<option value="">Assigned emergency doctor</option>'
+        : '<option value="">Select an available doctor</option>'
+      : isEmergency
+        ? '<option value="">The emergency doctor is unavailable at this time</option>'
+        : '<option value="">No available doctors match this type and time</option>';
     dentists.forEach((dentist) => {
       const option = document.createElement("option");
       option.value = dentist.dentist_id;
@@ -495,18 +527,28 @@ async function populateDentistDropdown() {
       const specialty = dentist.specialization
         ? ` (${dentist.specialization})`
         : "";
-      option.textContent = `${name}${specialty}`;
+      option.textContent = `${name}${specialty}${isEmergency ? " — Emergency doctor" : ""}`;
       select.appendChild(option);
     });
     select.disabled = dentists.length === 0;
-    if (dentists.some((dentist) => String(dentist.dentist_id) === currentValue)) {
+    if (isEmergency && dentists.length) {
+      select.value = String(dentists[0].dentist_id);
+    } else if (
+      dentists.some((dentist) => String(dentist.dentist_id) === currentValue)
+    ) {
       select.value = currentValue;
     }
-    loadDentistSchedules(select.value);
+    if (isEmergency) renderEmergencyBookingInfo(dentists);
+    else loadDentistSchedules(select.value);
   } catch (err) {
     console.error("Failed to load dentists:", err);
-    select.innerHTML = '<option value="">Unable to load available doctors</option>';
+    select.innerHTML = "";
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = err?.message || "Unable to load available doctors";
+    select.appendChild(option);
     select.disabled = true;
+    if (isEmergency) renderEmergencyBookingInfo();
   }
 }
 
@@ -524,6 +566,17 @@ async function handleAddSubmit(event) {
   ) {
     resultBox.innerHTML =
       '<p style="color:red;">Choose the present time or a future date and time.</p>';
+    form.appointment_date.focus();
+    return;
+  }
+
+  if (
+    form.appointment_type.value === "emergency" &&
+    dateParts &&
+    !isEmergencyAppointmentTime(dateParts.appointment_time)
+  ) {
+    resultBox.innerHTML =
+      '<p style="color:red;">Emergency appointments are only available from 6:00 AM to before 9:00 AM and from 4:00 PM to before 6:00 PM.</p>';
     form.appointment_date.focus();
     return;
   }

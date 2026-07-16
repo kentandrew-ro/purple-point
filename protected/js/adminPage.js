@@ -71,9 +71,15 @@ function configureScheduleInterface() {
   const appointmentButton = document.getElementById("btn-show-add");
   const doctorHoursButton = document.getElementById("btn-show-cancel");
   const staffShiftButton = document.getElementById("btn-show-staff-shift");
+  const emergencyDoctorButton = document.getElementById(
+    "btn-show-emergency-doctor",
+  );
   const appointmentCard = document.getElementById("appointment-form-card");
   const doctorHoursCard = document.getElementById("clinic-hours-form-card");
   const staffShiftCard = document.getElementById("staff-shift-form-card");
+  const emergencyDoctorCard = document.getElementById(
+    "emergency-doctor-form-card",
+  );
   const dentistField = document.getElementById("clinic-dentist-field");
   const heading = document.getElementById("clinic-hours-heading");
   const description = document.getElementById("clinic-hours-description");
@@ -85,6 +91,9 @@ function configureScheduleInterface() {
   if (appointmentButton) appointmentButton.hidden = false;
   if (doctorHoursButton) doctorHoursButton.hidden = isStaff;
   if (staffShiftButton) staffShiftButton.hidden = !isStaff;
+  if (emergencyDoctorButton) {
+    emergencyDoctorButton.hidden = managementRole !== "superadmin";
+  }
   if (dentistField) dentistField.hidden = isDoctor;
   if (currentScheduleSection) currentScheduleSection.hidden = !isDoctor;
 
@@ -101,6 +110,7 @@ function configureScheduleInterface() {
     if (appointmentCard) appointmentCard.style.display = "none";
     if (doctorHoursCard) doctorHoursCard.style.display = "block";
     if (staffShiftCard) staffShiftCard.style.display = "none";
+    if (emergencyDoctorCard) emergencyDoctorCard.style.display = "none";
     loadDoctorCurrentSchedule();
     return;
   }
@@ -117,6 +127,7 @@ function configureScheduleInterface() {
   }
   if (doctorHoursCard) doctorHoursCard.style.display = "none";
   if (staffShiftCard) staffShiftCard.style.display = "none";
+  if (emergencyDoctorCard) emergencyDoctorCard.style.display = "none";
 }
 
 async function initializeRoleInterface() {
@@ -139,6 +150,11 @@ async function initializeRoleInterface() {
     if (managementRole === "staff") {
       document.getElementById("btn-show-cancel")?.remove();
       document.getElementById("clinic-hours-form-card")?.remove();
+    }
+
+    if (managementRole !== "superadmin") {
+      document.getElementById("btn-show-emergency-doctor")?.remove();
+      document.getElementById("emergency-doctor-form-card")?.remove();
     }
 
     document.body.dataset.role = managementRole;
@@ -1261,6 +1277,107 @@ async function loadDoctorCurrentSchedule() {
   }
 }
 
+async function loadEmergencyDoctorAssignment() {
+  if (managementRole !== "superadmin") return;
+  const select = document.getElementById("emergency_dentist_id");
+  const current = document.getElementById("current-emergency-doctor");
+  if (!select || !current) return;
+
+  select.disabled = true;
+  current.textContent = "Loading...";
+  try {
+    const [doctorsResponse, assignmentResponse] = await Promise.all([
+      fetch("/api/dentists"),
+      fetch("/api/emergency-doctor"),
+    ]);
+    const doctors = await doctorsResponse.json().catch(() => []);
+    const assignment = await assignmentResponse.json().catch(() => ({}));
+    if (!doctorsResponse.ok) {
+      throw new Error(doctors.error || "Unable to load doctors.");
+    }
+    if (!assignmentResponse.ok || !assignment.ok) {
+      throw new Error(assignment.error || "Unable to load the assignment.");
+    }
+
+    select.innerHTML = '<option value="">Select a doctor</option>';
+    doctors.forEach((doctor) => {
+      const option = document.createElement("option");
+      option.value = doctor.dentist_id;
+      option.textContent = `${doctor.first_name} ${doctor.last_name}${
+        doctor.specialization ? ` (${doctor.specialization})` : ""
+      }`;
+      select.appendChild(option);
+    });
+
+    const assignedDoctor = assignment.doctor;
+    if (assignedDoctor) {
+      select.value = String(assignedDoctor.dentist_id);
+      current.textContent = `Dr. ${assignedDoctor.first_name} ${assignedDoctor.last_name}`;
+    } else {
+      current.textContent = "None — emergency booking is unavailable";
+    }
+    select.disabled = doctors.length === 0;
+  } catch (error) {
+    current.textContent = error.message || "Unable to load the assignment.";
+    select.innerHTML = '<option value="">Unable to load doctors</option>';
+  }
+}
+
+async function updateEmergencyDoctor(dentistId) {
+  const resultBox = document.getElementById("emergency-doctor-result");
+  showResult(resultBox, "Saving emergency doctor assignment...");
+  const response = await fetch("/api/emergency-doctor", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dentist_id: dentistId }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Unable to update the emergency doctor.");
+  }
+  showResult(resultBox, data.message);
+  await loadEmergencyDoctorAssignment();
+}
+
+async function submitEmergencyDoctorForm(event) {
+  event.preventDefault();
+  const select = event.currentTarget.elements.dentist_id;
+  const dentistId = Number(select.value);
+  if (!dentistId) {
+    showResult(
+      document.getElementById("emergency-doctor-result"),
+      "Please select a doctor.",
+    );
+    return;
+  }
+  try {
+    await updateEmergencyDoctor(dentistId);
+  } catch (error) {
+    showResult(
+      document.getElementById("emergency-doctor-result"),
+      `Error: ${error.message || "Unable to update the emergency doctor."}`,
+    );
+  }
+}
+
+async function clearEmergencyDoctorAssignment() {
+  if (
+    !window.confirm(
+      "Clear the emergency doctor? New emergency bookings will be unavailable until another doctor is assigned.",
+    )
+  ) {
+    return;
+  }
+  try {
+    await updateEmergencyDoctor(null);
+  } catch (error) {
+    showResult(
+      document.getElementById("emergency-doctor-result"),
+      `Error: ${error.message || "Unable to clear the emergency doctor."}`,
+    );
+  }
+}
+
 async function submitClinicHoursForm(e) {
   e.preventDefault();
   const form = e.target;
@@ -1460,9 +1577,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnAppointment = document.getElementById("btn-show-add");
   const btnClinicHours = document.getElementById("btn-show-cancel");
   const btnStaffShift = document.getElementById("btn-show-staff-shift");
+  const btnEmergencyDoctor = document.getElementById(
+    "btn-show-emergency-doctor",
+  );
   const appointmentCard = document.getElementById("appointment-form-card");
   const clinicHoursCard = document.getElementById("clinic-hours-form-card");
   const staffShiftCard = document.getElementById("staff-shift-form-card");
+  const emergencyDoctorCard = document.getElementById(
+    "emergency-doctor-form-card",
+  );
 
   function showDoctorForm() {
     if (doctorCard) doctorCard.style.display = "block";
@@ -1478,12 +1601,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (appointmentCard) appointmentCard.style.display = "block";
     if (clinicHoursCard) clinicHoursCard.style.display = "none";
     if (staffShiftCard) staffShiftCard.style.display = "none";
+    if (emergencyDoctorCard) emergencyDoctorCard.style.display = "none";
   }
 
   function showClinicHoursForm() {
     if (appointmentCard) appointmentCard.style.display = "none";
     if (clinicHoursCard) clinicHoursCard.style.display = "block";
     if (staffShiftCard) staffShiftCard.style.display = "none";
+    if (emergencyDoctorCard) emergencyDoctorCard.style.display = "none";
     if (managementRole === "doctor") loadDoctorCurrentSchedule();
   }
 
@@ -1491,7 +1616,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (appointmentCard) appointmentCard.style.display = "none";
     if (clinicHoursCard) clinicHoursCard.style.display = "none";
     if (staffShiftCard) staffShiftCard.style.display = "block";
+    if (emergencyDoctorCard) emergencyDoctorCard.style.display = "none";
     loadStaffShiftSchedule();
+  }
+
+  function showEmergencyDoctorForm() {
+    if (appointmentCard) appointmentCard.style.display = "none";
+    if (clinicHoursCard) clinicHoursCard.style.display = "none";
+    if (staffShiftCard) staffShiftCard.style.display = "none";
+    if (emergencyDoctorCard) emergencyDoctorCard.style.display = "block";
+    loadEmergencyDoctorAssignment();
   }
 
   if (btnDoctor) btnDoctor.addEventListener("click", showDoctorForm);
@@ -1502,11 +1636,20 @@ document.addEventListener("DOMContentLoaded", () => {
     btnClinicHours.addEventListener("click", showClinicHoursForm);
   if (btnStaffShift)
     btnStaffShift.addEventListener("click", showStaffShiftForm);
+  if (btnEmergencyDoctor) {
+    btnEmergencyDoctor.addEventListener("click", showEmergencyDoctorForm);
+  }
 
   const doctorForm = document.getElementById("doctor-form");
   const staffForm = document.getElementById("staff-form");
   const clinicHoursForm = document.getElementById("clinic-hours-form");
   const staffShiftForm = document.getElementById("staff-shift-form");
+  const emergencyDoctorForm = document.getElementById(
+    "emergency-doctor-form",
+  );
+  const clearEmergencyDoctor = document.getElementById(
+    "clear-emergency-doctor",
+  );
   const refreshDoctorSchedule = document.getElementById(
     "refresh-doctor-schedule",
   );
@@ -1517,6 +1660,15 @@ document.addEventListener("DOMContentLoaded", () => {
     clinicHoursForm.addEventListener("submit", submitClinicHoursForm);
   if (staffShiftForm)
     staffShiftForm.addEventListener("submit", submitStaffShiftForm);
+  if (emergencyDoctorForm) {
+    emergencyDoctorForm.addEventListener("submit", submitEmergencyDoctorForm);
+  }
+  if (clearEmergencyDoctor) {
+    clearEmergencyDoctor.addEventListener(
+      "click",
+      clearEmergencyDoctorAssignment,
+    );
+  }
   if (refreshDoctorSchedule)
     refreshDoctorSchedule.addEventListener("click", loadDoctorCurrentSchedule);
 

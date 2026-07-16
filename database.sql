@@ -47,6 +47,16 @@ CREATE TABLE dentist (
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
+CREATE TABLE emergency_duty_assignment (
+  assignment_id TINYINT NOT NULL DEFAULT 1 PRIMARY KEY,
+  dentist_id INT UNIQUE,
+  assigned_by INT,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT chk_emergency_duty_singleton CHECK (assignment_id = 1),
+  FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id) ON DELETE SET NULL,
+  FOREIGN KEY (assigned_by) REFERENCES users(user_id) ON DELETE SET NULL
+);
+
 CREATE TABLE dentist_schedule (
   schedule_id INT AUTO_INCREMENT PRIMARY KEY,
   dentist_id INT NOT NULL,
@@ -65,7 +75,7 @@ CREATE TABLE appointments (
   dentist_id INT NOT NULL,
   appointment_date DATE NOT NULL,
   appointment_time TIME NOT NULL,
-  appointment_type ENUM('consultation', 'cleaning', 'filling', 'extraction', 'other') NOT NULL,
+  appointment_type ENUM('consultation', 'cleaning', 'filling', 'extraction', 'other', 'emergency') NOT NULL,
   appointment_status ENUM('scheduled', 'completed', 'cancelled', 'no_show') NOT NULL DEFAULT 'scheduled',
   reason_for_visit TEXT,
   cancel_reason TEXT,

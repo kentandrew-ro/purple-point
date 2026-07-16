@@ -11,10 +11,14 @@ const {
   APPOINTMENT_STATUSES,
   APPOINTMENT_TYPES,
   doctorMatchesAppointmentType,
+  isEmergencyAppointmentTime,
   isIsoDate,
   parsePositiveInteger,
 } = require("../lib/businessRules");
 const { recordAudit } = require("../lib/audit");
+
+const EMERGENCY_WINDOW_ERROR =
+  "Emergency appointments are only available from 6:00 AM to before 9:00 AM and from 4:00 PM to before 6:00 PM.";
 
 async function markOverdueAppointments(executor = pool) {
   await executor.execute(
@@ -189,13 +193,14 @@ function registerAppointmentRoutes(app) {
       const appointment_status = requireField(body, "status");
       const reason_for_visit = requireField(body, "reason") || null;
       const dentist_id_raw = requireField(body, "dentist_id");
-      const dentist_id = parsePositiveInteger(dentist_id_raw);
+      let dentist_id = parsePositiveInteger(dentist_id_raw);
+      const isEmergency = appointment_type === "emergency";
 
       const missing = [];
       if (!appointment_date) missing.push("appointment_date");
       if (!appointment_time) missing.push("appointment_time");
       if (!appointment_type) missing.push("appointment_type");
-      if (!dentist_id_raw) missing.push("dentist_id");
+      if (!isEmergency && !dentist_id_raw) missing.push("dentist_id");
       if (!appointment_status) missing.push("status");
 
       if (missing.length) {
@@ -205,7 +210,7 @@ function registerAppointmentRoutes(app) {
         });
       }
 
-      if (!dentist_id) {
+      if (!isEmergency && !dentist_id) {
         return res
           .status(400)
           .json({ ok: false, error: "Invalid dentist_id." });
@@ -225,6 +230,26 @@ function registerAppointmentRoutes(app) {
           .json({ ok: false, error: "Invalid appointment_type." });
       }
 
+      if (isEmergency && !isEmergencyAppointmentTime(appointment_time)) {
+        return res.status(409).json({ ok: false, error: EMERGENCY_WINDOW_ERROR });
+      }
+
+      if (isEmergency) {
+        const [assignments] = await pool.execute(
+          `SELECT dentist_id
+           FROM emergency_duty_assignment
+           WHERE assignment_id = 1 AND dentist_id IS NOT NULL`,
+        );
+        if (!assignments.length) {
+          return res.status(409).json({
+            ok: false,
+            error:
+              "Emergency booking is unavailable until a superadmin assigns an emergency doctor.",
+          });
+        }
+        dentist_id = assignments[0].dentist_id;
+      }
+
       const [dentists] = await pool.execute(
         "SELECT dentist_id, specialization FROM dentist WHERE dentist_id = ?",
         [dentist_id],
@@ -233,6 +258,7 @@ function registerAppointmentRoutes(app) {
         return res.status(404).json({ ok: false, error: "Dentist not found." });
       }
       if (
+        !isEmergency &&
         !doctorMatchesAppointmentType(
           appointment_type,
           dentists[0].specialization,
@@ -262,22 +288,24 @@ function registerAppointmentRoutes(app) {
         });
       }
 
-      const [availableSchedules] = await pool.execute(
-        `SELECT schedule_id
-         FROM dentist_schedule
-         WHERE dentist_id = ?
-           AND is_active = TRUE
-           AND day_of_week = DAYNAME(?)
-           AND TIME(?) >= start_time
-           AND TIME(?) < end_time
-         LIMIT 1`,
-        [dentist_id, appointment_date, appointment_time, appointment_time],
-      );
-      if (!availableSchedules.length) {
-        return res.status(409).json({
-          ok: false,
-          error: "The selected dentist is not scheduled at that date and time.",
-        });
+      if (!isEmergency) {
+        const [availableSchedules] = await pool.execute(
+          `SELECT schedule_id
+           FROM dentist_schedule
+           WHERE dentist_id = ?
+             AND is_active = TRUE
+             AND day_of_week = DAYNAME(?)
+             AND TIME(?) >= start_time
+             AND TIME(?) < end_time
+           LIMIT 1`,
+          [dentist_id, appointment_date, appointment_time, appointment_time],
+        );
+        if (!availableSchedules.length) {
+          return res.status(409).json({
+            ok: false,
+            error: "The selected dentist is not scheduled at that date and time.",
+          });
+        }
       }
 
       const [conflicts] = await pool.execute(

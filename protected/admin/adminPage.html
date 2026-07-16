@@ -158,6 +158,9 @@
           <button type="button" id="btn-show-staff-shift" hidden>
             My Shift Schedule
           </button>
+          <button type="button" id="btn-show-emergency-doctor" hidden>
+            Emergency Doctor
+          </button>
         </div>
 
         <div id="appointment-form-card" class="card" style="display: none">
@@ -197,6 +200,7 @@
                 <option value="filling">Filling</option>
                 <option value="extraction">Extraction</option>
                 <option value="other">Other</option>
+                <option value="emergency">Emergency</option>
               </select>
             </div>
 
@@ -375,6 +379,35 @@
             <button type="submit">Save Selected Days</button>
           </form>
           <div id="clinic-hours-result" style="margin-top: 16px"></div>
+        </div>
+
+        <div id="emergency-doctor-form-card" class="card" style="display: none">
+          <h2>Emergency Doctor Assignment</h2>
+          <p>
+            Choose the single doctor who will receive new emergency appointments.
+            Existing appointments keep their original doctor.
+          </p>
+          <p>
+            <strong>Emergency windows:</strong> 6:00 AM–9:00 AM and
+            4:00 PM–6:00 PM. The ending times are not bookable.
+          </p>
+          <p>
+            <strong>Currently assigned:</strong>
+            <span id="current-emergency-doctor">Loading...</span>
+          </p>
+          <form id="emergency-doctor-form">
+            <div class="field">
+              <label for="emergency_dentist_id">Emergency Doctor</label>
+              <select id="emergency_dentist_id" name="dentist_id" required>
+                <option value="">Loading doctors...</option>
+              </select>
+            </div>
+            <button type="submit">Save Emergency Doctor</button>
+            <button type="button" id="clear-emergency-doctor">
+              Clear Assignment
+            </button>
+          </form>
+          <div id="emergency-doctor-result" style="margin-top: 16px"></div>
         </div>
 
         <div id="staff-shift-form-card" class="card" style="display: none">
@@ -1066,6 +1099,9 @@
                   <option value="UPDATE_DENTIST_SCHEDULE">
                     Update dentist schedule
                   </option>
+                  <option value="ASSIGN_EMERGENCY_DOCTOR">
+                    Assign emergency doctor
+                  </option>
                   <option value="UPDATE_STAFF_SHIFT_SCHEDULE">
                     Update staff shift schedule
                   </option>
@@ -1102,6 +1138,9 @@
                   <option value="">All record types</option>
                   <option value="appointment">Appointment</option>
                   <option value="dentist_schedule">Dentist schedule</option>
+                  <option value="emergency_duty_assignment">
+                    Emergency duty assignment
+                  </option>
                   <option value="staff">Staff</option>
                   <option value="dental_record">Dental record</option>
                   <option value="tooth_chart">Tooth chart</option>
