@@ -301,11 +301,11 @@ function renderAdminCalendar(appointments, container, baseDate) {
   container.innerHTML = `
     <div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <button type="button" id="admin-cal-prev"
-          style="border:1px solid #ccc;background:#fff;border-radius:4px;padding:4px 12px;cursor:pointer;font-size:16px;">&#8249;</button>
+        <button type="button" id="admin-cal-prev" class="appointment-calendar-nav"
+          aria-label="Previous month" title="Previous month">&lt;</button>
         <strong style="font-size:15px;">${monthLabel}</strong>
-        <button type="button" id="admin-cal-next"
-          style="border:1px solid #ccc;background:#fff;border-radius:4px;padding:4px 12px;cursor:pointer;font-size:16px;">&#8250;</button>
+        <button type="button" id="admin-cal-next" class="appointment-calendar-nav"
+          aria-label="Next month" title="Next month">&gt;</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid #ccc;border-left:1px solid #ccc;">
         ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]

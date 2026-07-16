@@ -612,6 +612,21 @@ tr:hover td {
   flex: 0 0 15px;
   border-radius: 4px;
 }
+button.appointment-calendar-nav {
+  width: 42px;
+  min-height: 42px;
+  padding: 0;
+  border-color: var(--line);
+  color: var(--purple);
+  background: #fff;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+button.appointment-calendar-nav:hover {
+  color: #fff;
+  border-color: var(--purple);
+  background: var(--purple);
+}
 .appointment-calendar-event--scheduled {
   color: #4f236f;
   border-left: 3px solid #7b3fb5;

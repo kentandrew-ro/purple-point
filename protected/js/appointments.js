@@ -267,9 +267,11 @@ function renderAppointmentsCalendar(
   container.innerHTML = `
     <div style="margin-top:8px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <button type="button" id="cal-prev" style="border:1px solid #ddd;background:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:16px;">&#8249;</button>
+        <button type="button" id="cal-prev" class="appointment-calendar-nav"
+          aria-label="Previous month" title="Previous month">&lt;</button>
         <div style="font-weight:700;font-size:15px;">${monthLabel}</div>
-        <button type="button" id="cal-next" style="border:1px solid #ddd;background:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:16px;">&#8250;</button>
+        <button type="button" id="cal-next" class="appointment-calendar-nav"
+          aria-label="Next month" title="Next month">&gt;</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);">
         ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
