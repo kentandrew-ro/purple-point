@@ -14,6 +14,7 @@ const {
   isIsoDate,
   resolveBillingStatus,
 } = require("../lib/businessRules");
+const { buildBillingStatusNotes } = require("../lib/billingNotes");
 const { createAuditLog, recordAudit } = require("../lib/audit");
 
 function registerBillingAuditRoutes(app) {
@@ -245,7 +246,6 @@ function registerBillingAuditRoutes(app) {
         .status(400)
         .json({ ok: false, error: "Please select a valid billing status." });
     }
-
     try {
       const [treatmentRows] = await pool.execute(
         `SELECT pt.patient_treatment_id, dr.patient_id
@@ -375,10 +375,41 @@ function registerBillingAuditRoutes(app) {
         [billingId],
       );
 
+      const [statusNoteRows] = await pool.execute(
+        `SELECT
+           al.audit_log_id,
+           al.action,
+           al.old_values,
+           al.new_values,
+           al.actor_name_snapshot AS changed_by_name,
+           DATE_FORMAT(al.created_at, '%Y-%m-%d %H:%i:%s') AS changed_at,
+           pay.reference_number,
+           pay.external_reference,
+           pay.payment_method,
+           pay.payment_status,
+           pay.notes AS payment_notes
+         FROM audit_logs al
+         LEFT JOIN payments pay
+           ON al.entity_type = 'payment'
+          AND pay.payment_id = al.entity_id
+         WHERE (
+           al.entity_type = 'billing'
+           AND al.entity_id = ?
+           AND al.action IN ('CREATE_BILLING', 'UPDATE_BILLING', 'UPDATE_BILLING_STATUS')
+         ) OR (
+           al.entity_type = 'payment'
+           AND pay.billing_id = ?
+           AND al.action IN ('RECORD_PAYMENT', 'UPDATE_PAYMENT_STATUS')
+         )
+         ORDER BY al.created_at DESC, al.audit_log_id DESC`,
+        [billingId, billingId],
+      );
+
       return res.json({
         ok: true,
         billing: billingRows[0],
         payments: paymentRows,
+        status_notes: buildBillingStatusNotes(statusNoteRows),
       });
     } catch (err) {
       console.error(err);
@@ -396,6 +427,7 @@ function registerBillingAuditRoutes(app) {
     const billingStatus = (
       requireField(req.body, "billing_status") || ""
     ).toLowerCase();
+    const statusNote = requireField(req.body, "status_note");
 
     if (!billingId) {
       return res.status(400).json({ ok: false, error: "Invalid billing ID." });
@@ -419,6 +451,12 @@ function registerBillingAuditRoutes(app) {
       return res
         .status(400)
         .json({ ok: false, error: "Please select a valid billing status." });
+    }
+    if (statusNote && statusNote.length > 255) {
+      return res.status(400).json({
+        ok: false,
+        error: "Status notes must not exceed 255 characters.",
+      });
     }
 
     let conn;
@@ -457,6 +495,16 @@ function registerBillingAuditRoutes(app) {
         paymentTotal.amount_paid,
         billingStatus,
       );
+      if (
+        effectiveBillingStatus !== billingRows[0].billing_status &&
+        !statusNote
+      ) {
+        await conn.rollback();
+        return res.status(400).json({
+          ok: false,
+          error: "A note is required when changing the billing status.",
+        });
+      }
       await conn.execute(
         `UPDATE billing
          SET billing_date = ?, total_amount = ?, billing_status = ?
@@ -477,6 +525,7 @@ function registerBillingAuditRoutes(app) {
           billing_date: billingDate,
           total_amount: totalAmount,
           billing_status: effectiveBillingStatus,
+          status_note: statusNote,
         },
       });
       await conn.commit();
@@ -501,6 +550,7 @@ function registerBillingAuditRoutes(app) {
     const billingStatus = (
       requireField(req.body, "billing_status") || ""
     ).toLowerCase();
+    const statusNote = requireField(req.body, "status_note");
 
     if (!billingId) {
       return res.status(400).json({ ok: false, error: "Invalid billing ID." });
@@ -509,6 +559,12 @@ function registerBillingAuditRoutes(app) {
       return res
         .status(400)
         .json({ ok: false, error: "Please select a valid billing status." });
+    }
+    if (statusNote && statusNote.length > 255) {
+      return res.status(400).json({
+        ok: false,
+        error: "Status notes must not exceed 255 characters.",
+      });
     }
 
     let conn;
@@ -541,6 +597,16 @@ function registerBillingAuditRoutes(app) {
         paymentTotal.amount_paid,
         billingStatus,
       );
+      if (
+        effectiveBillingStatus !== billingRows[0].billing_status &&
+        !statusNote
+      ) {
+        await conn.rollback();
+        return res.status(400).json({
+          ok: false,
+          error: "A note is required when changing the billing status.",
+        });
+      }
 
       await conn.execute(
         "UPDATE billing SET billing_status = ? WHERE billing_id = ?",
@@ -556,6 +622,7 @@ function registerBillingAuditRoutes(app) {
         },
         newValues: {
           billing_status: effectiveBillingStatus,
+          status_note: statusNote,
         },
       });
       await conn.commit();
@@ -650,7 +717,10 @@ function registerBillingAuditRoutes(app) {
       conn = await pool.getConnection();
       await conn.beginTransaction();
       const [billingRows] = await conn.execute(
-        "SELECT total_amount FROM billing WHERE billing_id = ? FOR UPDATE",
+        `SELECT total_amount, billing_status
+         FROM billing
+         WHERE billing_id = ?
+         FOR UPDATE`,
         [billingId],
       );
       if (!billingRows.length) {
@@ -680,7 +750,6 @@ function registerBillingAuditRoutes(app) {
           error: "Completed payment cannot exceed the remaining balance.",
         });
       }
-      const newPaidTotal = paymentOutcome.completedAmount;
       const effectiveBillingStatus = paymentOutcome.billingStatus;
 
       const [result] = await conn.execute(
@@ -715,6 +784,10 @@ function registerBillingAuditRoutes(app) {
         entityType: "payment",
         entityId: result.insertId,
         description: `Recorded payment ${referenceNumber} for billing #${billingId}`,
+        oldValues: {
+          billing_id: billingId,
+          billing_status: billingRows[0].billing_status,
+        },
         newValues: {
           billing_id: billingId,
           payment_date: paymentDate,
@@ -724,6 +797,7 @@ function registerBillingAuditRoutes(app) {
           billing_status: effectiveBillingStatus,
           reference_number: referenceNumber,
           external_reference: externalReference,
+          status_note: notes,
         },
       });
       await conn.commit();
@@ -754,6 +828,7 @@ function registerBillingAuditRoutes(app) {
     const billingStatus = (
       requireField(req.body, "billing_status") || ""
     ).toLowerCase();
+    const statusNote = requireField(req.body, "status_note");
 
     if (!paymentId) {
       return res.status(400).json({ ok: false, error: "Invalid payment ID." });
@@ -768,6 +843,18 @@ function registerBillingAuditRoutes(app) {
       return res.status(400).json({
         ok: false,
         error: "Please select the billing status after the payment update.",
+      });
+    }
+    if (!statusNote) {
+      return res.status(400).json({
+        ok: false,
+        error: "A note is required when changing a payment status.",
+      });
+    }
+    if (statusNote.length > 255) {
+      return res.status(400).json({
+        ok: false,
+        error: "Status notes must not exceed 255 characters.",
       });
     }
 
@@ -801,7 +888,8 @@ function registerBillingAuditRoutes(app) {
       }
 
       const [paymentRows] = await conn.execute(
-        `SELECT billing_id, amount_paid, payment_status, reference_number
+        `SELECT billing_id, amount_paid, payment_status, reference_number,
+                external_reference, payment_method
          FROM payments
          WHERE payment_id = ? AND billing_id = ?
          FOR UPDATE`,
@@ -866,6 +954,10 @@ function registerBillingAuditRoutes(app) {
           billing_id: billingId,
           payment_status: paymentStatus,
           billing_status: effectiveBillingStatus,
+          reference_number: payment.reference_number,
+          external_reference: payment.external_reference,
+          payment_method: payment.payment_method,
+          status_note: statusNote,
         },
       });
       await conn.commit();

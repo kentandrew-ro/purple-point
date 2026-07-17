@@ -2997,6 +2997,12 @@ function formatPeso(value) {
   });
 }
 
+function formatBillingStatus(status) {
+  if (status === "paid") return "Fully paid";
+  if (status === "partial") return "Partially paid";
+  return "Unpaid";
+}
+
 async function billingFetchJson(url, options) {
   const res = await fetch(url, options);
   const data = await res.json().catch(() => ({}));
@@ -3041,7 +3047,7 @@ async function loadBillings() {
             <td>${escapeHtml(formatPeso(row.total_amount))}</td>
             <td>${escapeHtml(formatPeso(row.amount_paid))}</td>
             <td>${escapeHtml(formatPeso(row.balance))}</td>
-            <td>${escapeHtml(row.billing_status)}</td>
+            <td>${escapeHtml(formatBillingStatus(row.billing_status))}</td>
             <td><button type="button" class="billing-view-button" data-billing-id="${escapeHtml(row.billing_id)}">View</button></td>
           </tr>`,
       )
@@ -3145,11 +3151,17 @@ function renderBillingPaymentHistory(payments, billingStatus) {
               <select class="billing-status-after-payment-edit">
                 ${["unpaid", "partial", "paid"]
                   .map(
-                    (status) =>
-                      `<option value="${status}"${status === billingStatus ? " selected" : ""}>${status}</option>`,
+                    (status) => {
+                      const label = formatBillingStatus(status);
+                      return `<option value="${status}"${status === billingStatus ? " selected" : ""}>${label}</option>`;
+                    },
                   )
                   .join("")}
               </select>
+            </label>
+            <label>
+              Status change note
+              <textarea class="billing-payment-status-note" maxlength="255" required placeholder="Explain this status change"></textarea>
             </label>
             <button type="button" class="billing-payment-status-update" data-payment-id="${escapeHtml(payment.payment_id)}">Update</button>`
           : "-";
@@ -3165,6 +3177,40 @@ function renderBillingPaymentHistory(payments, billingStatus) {
           <td>${escapeHtml(payment.recorded_by_name)}</td>
           <td>${escapeHtml(payment.notes || "-")}</td>
           <td>${action}</td>
+        </tr>`;
+    })
+    .join("");
+}
+
+function renderBillingStatusNotes(notes) {
+  const tbody = document.getElementById("billing-status-notes");
+  if (!tbody) return;
+  if (!notes?.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="6">No status notes recorded.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = notes
+    .map((statusNote) => {
+      const referenceParts = [
+        statusNote.reference_number,
+        statusNote.external_reference
+          ? `External: ${statusNote.external_reference}`
+          : null,
+      ].filter(Boolean);
+      const method = statusNote.payment_method
+        ? `${statusNote.payment_method_label} (${statusNote.payment_channel})`
+        : statusNote.payment_method_label;
+
+      return `
+        <tr>
+          <td>${escapeHtml(statusNote.changed_at)}</td>
+          <td>${escapeHtml(formatBillingStatus(statusNote.billing_status))}</td>
+          <td>${escapeHtml(referenceParts.join(" / ") || "-")}</td>
+          <td>${escapeHtml(method || "Manual adjustment")}</td>
+          <td>${escapeHtml(statusNote.changed_by_name || "Unknown")}</td>
+          <td>${escapeHtml(statusNote.note)}</td>
         </tr>`;
     })
     .join("");
@@ -3243,6 +3289,8 @@ async function openBillingStatement(billingId) {
       billing.billing_status;
     document.getElementById("billing-update-form").dataset.amountPaid =
       billing.amount_paid;
+    document.getElementById("billing-update-form").dataset.originalStatus =
+      billing.billing_status;
     document.getElementById("billing-payment-form").dataset.amountPaid =
       billing.amount_paid;
     document.getElementById("billing-payment-form").dataset.totalAmount =
@@ -3256,7 +3304,11 @@ async function openBillingStatement(billingId) {
     document.getElementById("billing-payment-external-reference").value = "";
     syncPaymentExternalReferenceVisibility();
     document.getElementById("billing-payment-notes").value = "";
+    document.getElementById("billing-status-only-note").value = "";
+    document.getElementById("billing-update-status-note").value = "";
+    document.getElementById("billing-update-status-note").required = false;
     renderBillingPaymentHistory(data.payments || [], billing.billing_status);
+    renderBillingStatusNotes(data.status_notes || []);
 
     if (!dialog.open) dialog.showModal();
   } catch (err) {
@@ -3283,6 +3335,9 @@ function initBillingTab() {
   const paymentForm = document.getElementById("billing-payment-form");
   const updateTotal = document.getElementById("billing-update-total");
   const updateStatus = document.getElementById("billing-update-status");
+  const updateStatusNote = document.getElementById(
+    "billing-update-status-note",
+  );
   const paymentAmount = document.getElementById("billing-payment-amount");
   const paymentStatus = document.getElementById("billing-payment-status");
   const paymentMethod = document.getElementById("billing-payment-method");
@@ -3298,6 +3353,10 @@ function initBillingTab() {
     if (!updateForm || !updateTotal || !updateStatus) return;
     if (valuesMatch(updateForm.dataset.amountPaid || 0, updateTotal.value)) {
       updateStatus.value = "paid";
+    }
+    if (updateStatusNote) {
+      updateStatusNote.required =
+        updateStatus.value !== updateForm.dataset.originalStatus;
     }
   }
 
@@ -3320,6 +3379,7 @@ function initBillingTab() {
   }
 
   updateTotal?.addEventListener("input", syncUpdatedStatementStatus);
+  updateStatus?.addEventListener("change", syncUpdatedStatementStatus);
   paymentAmount?.addEventListener("input", syncPaymentStatementStatus);
   paymentStatus?.addEventListener("change", syncPaymentStatementStatus);
   paymentMethod?.addEventListener(
@@ -3432,6 +3492,9 @@ function initBillingTab() {
                 .value,
               billing_status: document.getElementById("billing-update-status")
                 .value,
+              status_note: document.getElementById(
+                "billing-update-status-note",
+              ).value,
             }),
           },
         );
@@ -3461,6 +3524,9 @@ function initBillingTab() {
             body: JSON.stringify({
               billing_status: document.getElementById(
                 "billing-status-only-select",
+              ).value,
+              status_note: document.getElementById(
+                "billing-status-only-note",
               ).value,
             }),
           },
@@ -3531,12 +3597,19 @@ function initBillingTab() {
       const billingStatus = row?.querySelector(
         ".billing-status-after-payment-edit",
       )?.value;
+      const statusNote = row?.querySelector(
+        ".billing-payment-status-note",
+      )?.value.trim();
       const error = document.getElementById("billing-payment-error");
       const billingId = document.getElementById("billing-update-id").value;
       error.textContent = "";
 
       if (!paymentStatus) {
         error.textContent = "Please select the payment's new status.";
+        return;
+      }
+      if (!statusNote) {
+        error.textContent = "Please enter a note for this status change.";
         return;
       }
 
@@ -3550,6 +3623,7 @@ function initBillingTab() {
             body: JSON.stringify({
               payment_status: paymentStatus,
               billing_status: billingStatus,
+              status_note: statusNote,
             }),
           },
         );

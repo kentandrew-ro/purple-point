@@ -1010,8 +1010,8 @@
         <select id="billing-status-filter">
           <option value="">All statuses</option>
           <option value="unpaid">Unpaid</option>
-          <option value="partial">Partial</option>
-          <option value="paid">Paid</option>
+          <option value="partial">Partially paid</option>
+          <option value="paid">Fully paid</option>
         </select>
 
         <button type="button" id="billing-new-button">New Statement</button>
@@ -1082,8 +1082,8 @@
               ><br />
               <select id="billing-new-status" required>
                 <option value="unpaid">Unpaid</option>
-                <option value="partial">Partial</option>
-                <option value="paid">Paid</option>
+                <option value="partial">Partially paid</option>
+                <option value="paid">Fully paid</option>
               </select>
             </p>
             <p id="billing-new-error" aria-live="polite"></p>
@@ -1108,6 +1108,27 @@
             <strong>Balance:</strong> <span id="billing-view-balance"></span>
           </p>
 
+          <h4>Billing Status Notes</h4>
+          <div class="billing-payment-history-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Reference Number</th>
+                  <th>Payment Method</th>
+                  <th>Recorded By</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="billing-status-notes">
+                <tr>
+                  <td colspan="6">No status notes recorded.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
           <h4>Update Billing Status Only</h4>
           <p id="billing-status-only-help">
             Use this to correct the billing status without entering another
@@ -1119,9 +1140,19 @@
               ><br />
               <select id="billing-status-only-select" required>
                 <option value="unpaid">Unpaid</option>
-                <option value="partial">Partial</option>
-                <option value="paid">Paid</option>
+                <option value="partial">Partially paid</option>
+                <option value="paid">Fully paid</option>
               </select>
+            </p>
+            <p>
+              <label for="billing-status-only-note">Status change note</label
+              ><br />
+              <textarea
+                id="billing-status-only-note"
+                maxlength="255"
+                required
+                placeholder="Explain why the billing status is changing"
+              ></textarea>
             </p>
             <p id="billing-status-only-message" aria-live="polite"></p>
             <button type="submit">Update Status</button>
@@ -1150,9 +1181,19 @@
               ><br />
               <select id="billing-update-status" required>
                 <option value="unpaid">Unpaid</option>
-                <option value="partial">Partial</option>
-                <option value="paid">Paid</option>
+                <option value="partial">Partially paid</option>
+                <option value="paid">Fully paid</option>
               </select>
+            </p>
+            <p>
+              <label for="billing-update-status-note"
+                >Status change note (required when status changes)</label
+              ><br />
+              <textarea
+                id="billing-update-status-note"
+                maxlength="255"
+                placeholder="Explain the status change"
+              ></textarea>
             </p>
             <p id="billing-update-error" aria-live="polite"></p>
             <button type="submit">Update Statement</button>
@@ -1218,8 +1259,8 @@
               ><br />
               <select id="billing-payment-billing-status" required>
                 <option value="unpaid">Unpaid</option>
-                <option value="partial">Partial</option>
-                <option value="paid">Paid</option>
+                <option value="partial">Partially paid</option>
+                <option value="paid">Fully paid</option>
               </select>
             </p>
             <p>
@@ -1236,8 +1277,13 @@
               />
             </p>
             <p>
-              <label for="billing-payment-notes">Notes</label><br />
-              <textarea id="billing-payment-notes" maxlength="255"></textarea>
+              <label for="billing-payment-notes">Payment/status note</label
+              ><br />
+              <textarea
+                id="billing-payment-notes"
+                maxlength="255"
+                placeholder="Optional details; status, reference, and method are recorded automatically"
+              ></textarea>
             </p>
             <p id="billing-payment-error" aria-live="polite"></p>
             <button type="submit">Record Payment</button>
