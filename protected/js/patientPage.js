@@ -50,6 +50,9 @@ function statusLabel(status) {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
+let selectedCancelAppointmentId = null;
+let selectedCancelButton = null;
+
 async function loadAppointments() {
   const table = document.getElementById("appointmentsTable");
   const empty = document.getElementById("appointmentsEmpty");
@@ -118,9 +121,16 @@ async function loadAppointments() {
       cancelButton.type = "button";
       cancelButton.className = "cancel-btn";
       cancelButton.textContent = "Cancel";
-      cancelButton.addEventListener("click", () =>
-        cancelAppointment(appt.appointment_id, cancelButton),
-      );
+      cancelButton.addEventListener("click", () => {
+        const doctorLabel = appt.doctor_name
+          ? ` with ${appt.doctor_name}`
+          : "";
+        openCancelModal(
+          appt.appointment_id,
+          `${formatDateTime(appt.appointment_date, appt.appointment_time)}${doctorLabel}`,
+          cancelButton,
+        );
+      });
       actionCell.appendChild(cancelButton);
       tr.append(dateTimeCell, doctorCell, reasonCell, statusCell, actionCell);
       body.appendChild(tr);
@@ -133,47 +143,105 @@ async function loadAppointments() {
   }
 }
 
-async function cancelAppointment(appointmentId, btn) {
-  const reason = window.prompt(
-    "Please provide a reason for cancelling this appointment:",
-  );
-  if (reason === null) return;
-  if (!reason.trim()) {
-    alert("A cancellation reason is required.");
+function openCancelModal(appointmentId, appointmentLabel, button) {
+  selectedCancelAppointmentId = appointmentId;
+  selectedCancelButton = button;
+  const modal = document.getElementById("cancel-reason-modal");
+  const title = document.getElementById("cancel-modal-title");
+  const reasonInput = document.getElementById("cancel-reason-input");
+  const result = document.getElementById("cancel-appointment-result");
+  if (!modal || !title || !reasonInput || !result) return;
+
+  title.textContent = appointmentLabel || `Appointment #${appointmentId}`;
+  reasonInput.value = "";
+  result.textContent = "";
+  result.classList.remove("error", "success");
+  modal.style.display = "flex";
+  reasonInput.focus();
+}
+
+function closeCancelModal({ restoreFocus = true } = {}) {
+  const modal = document.getElementById("cancel-reason-modal");
+  const button = selectedCancelButton;
+  if (modal) modal.style.display = "none";
+  selectedCancelAppointmentId = null;
+  selectedCancelButton = null;
+  if (restoreFocus && button?.isConnected) button.focus();
+}
+
+async function submitAppointmentCancellation(event) {
+  event.preventDefault();
+  const appointmentId = selectedCancelAppointmentId;
+  const reasonInput = document.getElementById("cancel-reason-input");
+  const result = document.getElementById("cancel-appointment-result");
+  const confirmButton = document.getElementById("confirm-cancel-btn");
+  const closeButton = document.getElementById("close-cancel-modal-btn");
+  const reason = reasonInput?.value.trim() || "";
+
+  if (!appointmentId || !result || !confirmButton || !closeButton) return;
+  if (!reason) {
+    result.textContent = "Please enter a cancellation reason.";
+    result.classList.add("error");
+    reasonInput?.focus();
     return;
   }
 
-  const confirmed = confirm(
-    "Are you sure you want to cancel this appointment?",
-  );
-  if (!confirmed) return;
-
-  btn.disabled = true;
-  btn.textContent = "Cancelling...";
+  confirmButton.disabled = true;
+  closeButton.disabled = true;
+  confirmButton.textContent = "Cancelling...";
+  result.textContent = "Cancelling appointment...";
+  result.classList.remove("error", "success");
 
   try {
     const res = await fetch(`/api/appointments/${appointmentId}/cancel`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cancel_reason: reason.trim() }),
+      body: JSON.stringify({ cancel_reason: reason }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
     if (!res.ok || !data.ok) {
-      alert(data.error || "Failed to cancel appointment.");
-      btn.disabled = false;
-      btn.textContent = "Cancel";
-      return;
+      throw new Error(data.error || "Failed to cancel appointment.");
     }
 
-    loadAppointments();
+    closeCancelModal({ restoreFocus: false });
+    await loadAppointments();
   } catch (err) {
     console.error(err);
-    alert("Something went wrong cancelling the appointment.");
-    btn.disabled = false;
-    btn.textContent = "Cancel";
+    result.textContent =
+      err?.message || "Something went wrong cancelling the appointment.";
+    result.classList.add("error");
+  } finally {
+    confirmButton.disabled = false;
+    closeButton.disabled = false;
+    confirmButton.textContent = "Confirm Cancellation";
   }
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  const modal = document.getElementById("cancel-reason-modal");
+  const form = document.getElementById("homepage-cancel-form");
+  const closeButton = document.getElementById("close-cancel-modal-btn");
+  form?.addEventListener("submit", submitAppointmentCancellation);
+  closeButton?.addEventListener("click", () => closeCancelModal());
+  modal?.addEventListener("click", (event) => {
+    if (
+      event.target === modal &&
+      !document.getElementById("confirm-cancel-btn")?.disabled
+    ) {
+      closeCancelModal();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (
+      event.key === "Escape" &&
+      modal?.style.display === "flex" &&
+      !document.getElementById("confirm-cancel-btn")?.disabled
+    ) {
+      closeCancelModal();
+    }
+  });
+});
 
 window.addEventListener("pageshow", () => {
   loadProfileRequirement();

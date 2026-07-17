@@ -78,6 +78,53 @@
         </section>
       </div>
     </main>
+    <div
+      id="cancel-reason-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cancel-modal-heading"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(30, 17, 48, 0.6);
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      "
+    >
+      <div class="card" style="width: min(92vw, 440px); margin: 0">
+        <h3 id="cancel-modal-heading">Cancel Appointment</h3>
+        <p id="cancel-modal-title"></p>
+        <form id="homepage-cancel-form">
+          <div class="field-group">
+            <label for="cancel-reason-input">Reason for cancellation</label>
+            <textarea
+              id="cancel-reason-input"
+              placeholder="Enter reason for cancellation"
+              required
+            ></textarea>
+          </div>
+          <div
+            id="cancel-appointment-result"
+            class="form-message"
+            aria-live="polite"
+          ></div>
+          <div class="actions">
+            <button type="submit" id="confirm-cancel-btn">
+              Confirm Cancellation
+            </button>
+            <button
+              type="button"
+              id="close-cancel-modal-btn"
+              class="secondary"
+            >
+              Close
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
     <script src="/public_js/requiredFields.js"></script>
     <script src="/public_js/currentUser.js"></script>
     <script src="/js/patientPage.js"></script>
