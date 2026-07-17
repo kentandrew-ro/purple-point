@@ -943,9 +943,11 @@ async function searchPatientStatus(query) {
 }
 
 async function loadPatientStatus(patientId) {
+  const card = document.getElementById("patient-status-editor-card");
   const editor = document.getElementById("patient-status-editor");
   const message = document.getElementById("patient-status-message");
-  if (!editor || !message) return;
+  if (!card || !editor || !message) return;
+  card.hidden = false;
   editor.style.display = "none";
   message.textContent = "Loading patient status...";
   message.classList.remove("error", "success");
@@ -1204,7 +1206,7 @@ function openPatientDirectoryDetails(scope, patientId) {
     });
   } else if (scope === "status") {
     loadPatientStatus(patientId).then(() => {
-      document.getElementById("patient-status-editor")?.scrollIntoView({
+      document.getElementById("patient-status-editor-card")?.scrollIntoView({
         behavior: "smooth",
         block: "start",
       });
@@ -1699,9 +1701,59 @@ async function loadStaffShiftSchedule() {
       throw new Error(data.error || "Unable to load your shift schedule.");
     }
     currentShift.textContent = data.shift_schedule || "Not set";
+    populateStaffShiftForm(data.shift_schedule);
   } catch (error) {
     currentShift.textContent = error.message;
   }
+}
+
+function parseStaffShiftSchedule(shiftSchedule) {
+  const match = String(shiftSchedule || "").match(
+    /^(.*):\s*([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/,
+  );
+  if (!match) return { workDays: [], startTime: "", endTime: "" };
+
+  const workDaysText = match[1].trim();
+  const rangePattern = new RegExp(
+    `(${SCHEDULE_WEEKDAYS.join("|")})\\s*(?:to|-)\\s*(${SCHEDULE_WEEKDAYS.join("|")})`,
+    "i",
+  );
+  const range = workDaysText.match(rangePattern);
+  let workDays;
+  if (range) {
+    const startIndex = SCHEDULE_WEEKDAYS.findIndex(
+      (day) => day.toLowerCase() === range[1].toLowerCase(),
+    );
+    const endIndex = SCHEDULE_WEEKDAYS.findIndex(
+      (day) => day.toLowerCase() === range[2].toLowerCase(),
+    );
+    workDays =
+      startIndex >= 0 && endIndex >= startIndex
+        ? SCHEDULE_WEEKDAYS.slice(startIndex, endIndex + 1)
+        : [];
+  } else {
+    workDays = SCHEDULE_WEEKDAYS.filter((day) =>
+      new RegExp(`\\b${day}\\b`, "i").test(workDaysText),
+    );
+  }
+
+  return {
+    workDays,
+    startTime: `${match[2]}:${match[3]}`,
+    endTime: `${match[4]}:${match[5]}`,
+  };
+}
+
+function populateStaffShiftForm(shiftSchedule) {
+  const form = document.getElementById("staff-shift-form");
+  if (!form) return;
+  const parsed = parseStaffShiftSchedule(shiftSchedule);
+  const selectedDays = new Set(parsed.workDays);
+  form.querySelectorAll('input[name="work_days"]').forEach((checkbox) => {
+    checkbox.checked = selectedDays.has(checkbox.value);
+  });
+  form.elements.start_time.value = parsed.startTime;
+  form.elements.end_time.value = parsed.endTime;
 }
 
 async function submitStaffShiftForm(event) {
@@ -1710,6 +1762,15 @@ async function submitStaffShiftForm(event) {
   const resultBox = document.getElementById("staff-shift-result");
   const submitButton = form.querySelector('button[type="submit"]');
   const payload = getFormPayload(form);
+  payload.work_days = Array.from(
+    form.querySelectorAll('input[name="work_days"]:checked'),
+    (checkbox) => checkbox.value,
+  );
+
+  if (!payload.work_days.length) {
+    showResult(resultBox, "Error: Select at least one work day.");
+    return;
+  }
 
   if (payload.start_time >= payload.end_time) {
     showResult(resultBox, "Error: Shift start must be before shift end.");
@@ -1731,7 +1792,6 @@ async function submitStaffShiftForm(event) {
     document.getElementById("staff-current-shift").textContent =
       data.shift_schedule;
     showResult(resultBox, "Shift schedule saved successfully.");
-    form.reset();
   } catch (error) {
     showResult(resultBox, `Error: ${error.message}`);
   } finally {

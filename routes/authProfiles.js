@@ -23,6 +23,16 @@ const {
   replacePatientAllergies,
 } = require("../lib/medicalProfile");
 
+const STAFF_SHIFT_WEEKDAYS = Object.freeze([
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+]);
+
 function registerAuthProfileRoutes(
   app,
   { sessionCookieName = "purplepoint.sid", isProduction = false } = {},
@@ -862,7 +872,29 @@ function registerAuthProfileRoutes(
   app.patch("/api/staff/me/shift-schedule", async (req, res) => {
     if (!requireRole(req, res, ["staff"])) return;
 
-    const workDays = requireField(req.body, "work_days");
+    const submittedWorkDays = req.body?.work_days;
+    let workDays;
+    if (Array.isArray(submittedWorkDays)) {
+      const normalizedDays = submittedWorkDays.map((day) =>
+        String(day || "").trim(),
+      );
+      const invalidDay = normalizedDays.find(
+        (day) => !STAFF_SHIFT_WEEKDAYS.includes(day),
+      );
+      if (invalidDay) {
+        return res.status(400).json({
+          ok: false,
+          error: "Please select valid work days.",
+        });
+      }
+      const selectedDays = new Set(normalizedDays);
+      workDays = STAFF_SHIFT_WEEKDAYS.filter((day) => selectedDays.has(day)).join(
+        ", ",
+      );
+    } else {
+      // Keep compatibility with older clients that submitted a text description.
+      workDays = requireField(req.body, "work_days");
+    }
     const startTime = requireField(req.body, "start_time");
     const endTime = requireField(req.body, "end_time");
     const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -873,10 +905,10 @@ function registerAuthProfileRoutes(
         error: "Work days, shift start, and shift end are required.",
       });
     }
-    if (workDays.length > 60) {
+    if (workDays.length > 80) {
       return res
         .status(400)
-        .json({ ok: false, error: "Work days must be 60 characters or fewer." });
+        .json({ ok: false, error: "Work days must be 80 characters or fewer." });
     }
     if (!timePattern.test(startTime) || !timePattern.test(endTime)) {
       return res

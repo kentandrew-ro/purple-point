@@ -421,16 +421,39 @@
             <span id="staff-current-shift">Loading...</span>
           </p>
           <form id="staff-shift-form">
-            <div class="field">
-              <label for="staff-shift-days">Work Days</label>
-              <input
-                id="staff-shift-days"
-                name="work_days"
-                maxlength="60"
-                placeholder="For example: Monday to Friday"
-                required
-              />
-            </div>
+            <fieldset class="schedule-days-fieldset">
+              <legend class="required-field-label">Work Days</legend>
+              <div class="schedule-day-options">
+                <label class="schedule-day-option">
+                  <input type="checkbox" name="work_days" value="Monday" />
+                  Monday
+                </label>
+                <label class="schedule-day-option">
+                  <input type="checkbox" name="work_days" value="Tuesday" />
+                  Tuesday
+                </label>
+                <label class="schedule-day-option">
+                  <input type="checkbox" name="work_days" value="Wednesday" />
+                  Wednesday
+                </label>
+                <label class="schedule-day-option">
+                  <input type="checkbox" name="work_days" value="Thursday" />
+                  Thursday
+                </label>
+                <label class="schedule-day-option">
+                  <input type="checkbox" name="work_days" value="Friday" />
+                  Friday
+                </label>
+                <label class="schedule-day-option">
+                  <input type="checkbox" name="work_days" value="Saturday" />
+                  Saturday
+                </label>
+                <label class="schedule-day-option">
+                  <input type="checkbox" name="work_days" value="Sunday" />
+                  Sunday
+                </label>
+              </div>
+            </fieldset>
             <div class="field">
               <label for="staff-shift-start">Shift Starts</label>
               <input
@@ -605,7 +628,12 @@
           </div>
         </div>
 
-        <div class="card" style="margin-top: 16px">
+        <div
+          id="patient-status-editor-card"
+          class="card"
+          style="margin-top: 16px"
+          hidden
+        >
           <div id="patient-status-editor" style="display: none; margin-top: 18px">
             <h3 id="patient-status-name"></h3>
             <input id="patient-status-id" type="hidden" />
