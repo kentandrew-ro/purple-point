@@ -1229,6 +1229,7 @@ function registerDentalAdminRoutes(app) {
       return res.status(400).json({ ok: false, error: "Invalid record ID." });
     }
 
+    let conn;
     try {
       const body = req.body || {};
       const dentist_id_raw = requireField(body, "dentist_id");
@@ -1254,7 +1255,10 @@ function registerDentalAdminRoutes(app) {
         });
       }
 
-      const [existing] = await pool.execute(
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
+
+      const [existing] = await conn.execute(
         `SELECT dr.dental_record_id, dr.dentist_id,
                 DATE_FORMAT(dr.visit_date, '%Y-%m-%d') AS visit_date,
                 t.treatment_name AS procedure_name,
@@ -1263,51 +1267,54 @@ function registerDentalAdminRoutes(app) {
          FROM dental_records dr
          LEFT JOIN patient_treatments pt ON pt.dental_record_id = dr.dental_record_id
          LEFT JOIN treatment t ON t.treatment_id = pt.treatment_id
-         WHERE dr.dental_record_id = ?`,
+         WHERE dr.dental_record_id = ?
+         FOR UPDATE`,
         [recordId],
       );
 
       if (!existing.length) {
+        await conn.rollback();
         return res
           .status(404)
           .json({ ok: false, error: "Treatment record not found." });
       }
 
       if (dentist_id) {
-        const [dentists] = await pool.execute(
+        const [dentists] = await conn.execute(
           "SELECT dentist_id FROM dentist WHERE dentist_id = ?",
           [dentist_id],
         );
         if (!dentists.length) {
+          await conn.rollback();
           return res
             .status(404)
             .json({ ok: false, error: "Dentist not found." });
         }
       }
 
-      const teeth_involved = await getToothChartTreatmentValue(pool, recordId);
+      const teeth_involved = await getToothChartTreatmentValue(conn, recordId);
 
-      await pool.execute(
+      await conn.execute(
         `UPDATE dental_records
          SET dentist_id = ?, visit_date = ?, treatment_plan_notes = ?, teeth_involved = ?
          WHERE dental_record_id = ?`,
         [dentist_id, visit_date, procedure, teeth_involved, recordId],
       );
 
-      const [existingLink] = await pool.execute(
+      const [existingLink] = await conn.execute(
         "SELECT patient_treatment_id, treatment_id FROM patient_treatments WHERE dental_record_id = ?",
         [recordId],
       );
 
       if (existingLink.length) {
         const treatmentId = existingLink[0].treatment_id;
-        await pool.execute(
+        await conn.execute(
           `UPDATE treatment
            SET treatment_name = ?, description = ?, default_duration = ?, default_price = ?, category = ?
            WHERE treatment_id = ?`,
           [procedure, notes, duration, price, category, treatmentId],
         );
-        await pool.execute(
+        await conn.execute(
           `UPDATE patient_treatments
            SET teeth_involved = ?, actual_price = ?, actual_duration = ?
            WHERE patient_treatment_id = ?`,
@@ -1319,12 +1326,12 @@ function registerDentalAdminRoutes(app) {
           ],
         );
       } else {
-        const [newTreatment] = await pool.execute(
+        const [newTreatment] = await conn.execute(
           `INSERT INTO treatment (treatment_name, description, default_duration, default_price, category)
            VALUES (?, ?, ?, ?, ?)`,
           [procedure, notes, duration, price, category],
         );
-        await pool.execute(
+        await conn.execute(
           `INSERT INTO patient_treatments
              (dental_record_id, treatment_id, teeth_involved, actual_price, actual_duration)
            VALUES (?, ?, ?, ?, ?)`,
@@ -1332,7 +1339,7 @@ function registerDentalAdminRoutes(app) {
         );
       }
 
-      await recordAudit(req, {
+      await createAuditLog(conn, req, {
         action: "UPDATE_DENTAL_RECORD",
         entityType: "dental_record",
         entityId: recordId,
@@ -1355,10 +1362,21 @@ function registerDentalAdminRoutes(app) {
         },
       });
 
+      await conn.commit();
+
       return res.json({ ok: true, message: "Treatment updated successfully." });
     } catch (err) {
+      if (conn) {
+        try {
+          await conn.rollback();
+        } catch (rollbackError) {
+          console.error(rollbackError);
+        }
+      }
       console.error(err);
       return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    } finally {
+      if (conn) conn.release();
     }
   });
 
@@ -1510,6 +1528,7 @@ function registerDentalAdminRoutes(app) {
       return res.status(401).json({ error: "Not logged in" });
     if (!requireRole(req, res, ["superadmin", "doctor"])) return;
 
+    let conn;
     try {
       const body = req.body || {};
       const patient_id = parseInt(requireField(body, "patient_id"), 10);
@@ -1620,20 +1639,38 @@ function registerDentalAdminRoutes(app) {
       // admin (staff, dentist, or plain admin) can record entries.
       const recorded_by = req.session.userId;
 
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
+
       let dentalRecordId = linkedDentalRecordId;
       if (dentalRecordId) {
+        await conn.execute(
+          "SELECT dental_record_id FROM dental_records WHERE dental_record_id = ? FOR UPDATE",
+          [dentalRecordId],
+        );
+        const [existingTreatments] = await conn.execute(
+          "SELECT patient_treatment_id FROM patient_treatments WHERE dental_record_id = ? LIMIT 1",
+          [dentalRecordId],
+        );
+        if (existingTreatments.length) {
+          await conn.rollback();
+          return res.status(409).json({
+            ok: false,
+            error: "This appointment already has a treatment.",
+          });
+        }
         teeth_involved = await getToothChartTreatmentValue(
-          pool,
+          conn,
           dentalRecordId,
         );
-        await pool.execute(
+        await conn.execute(
           `UPDATE dental_records
            SET dentist_id = ?, visit_date = ?, treatment_plan_notes = ?, teeth_involved = ?
            WHERE dental_record_id = ?`,
           [dentist_id, visit_date, procedure, teeth_involved, dentalRecordId],
         );
       } else {
-        const [result] = await pool.execute(
+        const [result] = await conn.execute(
           `INSERT INTO dental_records
              (patient_id, appointment_id, dentist_id, recorded_by, visit_date, treatment_plan_notes, teeth_involved)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -1651,20 +1688,20 @@ function registerDentalAdminRoutes(app) {
       }
 
       if (appointment_id) {
-        await pool.execute(
+        await conn.execute(
           `UPDATE appointments SET appointment_status = 'completed'
            WHERE appointment_id = ? AND appointment_status = 'scheduled'`,
           [appointment_id],
         );
       }
 
-      const [newTreatment] = await pool.execute(
+      const [newTreatment] = await conn.execute(
         `INSERT INTO treatment (treatment_name, description, default_duration, default_price, category)
          VALUES (?, ?, ?, ?, ?)`,
         [procedure, notes, duration, price, category],
       );
 
-      await pool.execute(
+      await conn.execute(
         `INSERT INTO patient_treatments
            (dental_record_id, treatment_id, teeth_involved, actual_price, actual_duration)
          VALUES (?, ?, ?, ?, ?)`,
@@ -1677,7 +1714,7 @@ function registerDentalAdminRoutes(app) {
         ],
       );
 
-      await recordAudit(req, {
+      await createAuditLog(conn, req, {
         action: "CREATE_DENTAL_RECORD",
         entityType: "dental_record",
         entityId: dentalRecordId,
@@ -1697,7 +1734,7 @@ function registerDentalAdminRoutes(app) {
 
       let doctorName = "—";
       if (dentist_id) {
-        const [dentistRows] = await pool.execute(
+        const [dentistRows] = await conn.execute(
           `SELECT u.first_name, u.last_name FROM dentist d
            JOIN users u ON u.user_id = d.user_id
            WHERE d.dentist_id = ?`,
@@ -1708,6 +1745,8 @@ function registerDentalAdminRoutes(app) {
             `${dentistRows[0].first_name} ${dentistRows[0].last_name}`.trim();
         }
       }
+
+      await conn.commit();
 
       return res.status(201).json({
         ok: true,
@@ -1725,8 +1764,17 @@ function registerDentalAdminRoutes(app) {
         },
       });
     } catch (err) {
+      if (conn) {
+        try {
+          await conn.rollback();
+        } catch (rollbackError) {
+          console.error(rollbackError);
+        }
+      }
       console.error(err);
       return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    } finally {
+      if (conn) conn.release();
     }
   });
 

@@ -112,13 +112,17 @@ function registerAppointmentRoutes(app) {
       return res.status(401).json({ error: "Not logged in" });
     }
 
+    let bookingConn;
     try {
       const body = req.body || {};
       let patient_id;
       let patientProfile;
 
       const role = normalizeRole(req.session.role);
-      if (["superadmin", "staff", "doctor"].includes(role)) {
+      const isManagementUser = ["superadmin", "staff", "doctor"].includes(
+        role,
+      );
+      if (isManagementUser) {
         patient_id = parseInt(body.patient_id, 10);
         if (!patient_id) {
           return res
@@ -190,7 +194,10 @@ function registerAppointmentRoutes(app) {
       const appointment_date = requireField(body, "appointment_date");
       const appointment_time = requireField(body, "appointment_time");
       const appointment_type = requireField(body, "appointment_type");
-      const appointment_status = requireField(body, "status");
+      const requestedAppointmentStatus = requireField(body, "status");
+      const appointment_status = isManagementUser
+        ? requestedAppointmentStatus
+        : "scheduled";
       const reason_for_visit = requireField(body, "reason") || null;
       const dentist_id_raw = requireField(body, "dentist_id");
       let dentist_id = parsePositiveInteger(dentist_id_raw);
@@ -201,7 +208,7 @@ function registerAppointmentRoutes(app) {
       if (!appointment_time) missing.push("appointment_time");
       if (!appointment_type) missing.push("appointment_type");
       if (!isEmergency && !dentist_id_raw) missing.push("dentist_id");
-      if (!appointment_status) missing.push("status");
+      if (isManagementUser && !appointment_status) missing.push("status");
 
       if (missing.length) {
         return res.status(400).json({
@@ -308,7 +315,18 @@ function registerAppointmentRoutes(app) {
         }
       }
 
-      const [conflicts] = await pool.execute(
+      bookingConn = await pool.getConnection();
+      await bookingConn.beginTransaction();
+
+      // Serialize booking attempts for the same dentist. The lock is held
+      // through the conflict check and insert so concurrent requests cannot
+      // both claim the same date and time.
+      await bookingConn.execute(
+        "SELECT dentist_id FROM dentist WHERE dentist_id = ? FOR UPDATE",
+        [dentist_id],
+      );
+
+      const [conflicts] = await bookingConn.execute(
         `SELECT appointment_id
          FROM appointments
          WHERE dentist_id = ?
@@ -319,6 +337,7 @@ function registerAppointmentRoutes(app) {
         [dentist_id, appointment_date, appointment_time],
       );
       if (conflicts.length) {
+        await bookingConn.rollback();
         return res.status(409).json({
           ok: false,
           error:
@@ -326,7 +345,7 @@ function registerAppointmentRoutes(app) {
         });
       }
 
-      const [result] = await pool.execute(
+      const [result] = await bookingConn.execute(
         `INSERT INTO appointments
            (patient_id, dentist_id, appointment_date, appointment_time,
             appointment_type, appointment_status, reason_for_visit)
@@ -341,6 +360,10 @@ function registerAppointmentRoutes(app) {
           reason_for_visit,
         ],
       );
+
+      await bookingConn.commit();
+      bookingConn.release();
+      bookingConn = null;
 
       await recordAudit(req, {
         action: "CREATE_APPOINTMENT",
@@ -359,8 +382,17 @@ function registerAppointmentRoutes(app) {
 
       return res.status(201).json({ ok: true, id: result.insertId });
     } catch (err) {
+      if (bookingConn) {
+        try {
+          await bookingConn.rollback();
+        } catch (rollbackError) {
+          console.error(rollbackError);
+        }
+      }
       console.error(err);
       return res.status(500).json({ ok: false, error: INTERNAL_ERROR_MESSAGE });
+    } finally {
+      if (bookingConn) bookingConn.release();
     }
   });
 
