@@ -1121,12 +1121,14 @@ body.admin-layout {
   width: 155px;
 }
 .patient-directory-table th:last-child {
-  width: 105px;
+  width: 140px;
 }
 .patient-directory-table .patient-directory-view-button {
+  max-width: 100%;
   min-height: 30px;
-  padding: 4px 10px;
+  padding: 4px 8px;
   font-size: 0.76rem;
+  white-space: nowrap;
 }
 .patient-info-directory-table th:nth-child(1) {
   width: 7%;
@@ -1150,7 +1152,7 @@ body.admin-layout {
   width: 12%;
 }
 .patient-info-directory-table th:nth-child(8) {
-  width: 8%;
+  width: 140px;
 }
 .audit-pagination {
   display: flex;
