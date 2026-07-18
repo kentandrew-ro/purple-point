@@ -487,6 +487,7 @@ async function populateDentistDropdown() {
   const appointmentType = form?.elements?.appointment_type?.value || "";
   const isEmergency = appointmentType === "emergency";
   if (!select) return;
+  select.dataset.noDoctorsAvailable = "false";
 
   if (!dateTimeValue || !appointmentType) {
     const instruction = !dateTimeValue && !appointmentType
@@ -513,13 +514,12 @@ async function populateDentistDropdown() {
     ) {
       return;
     }
+    select.dataset.noDoctorsAvailable = String(dentists.length === 0);
     select.innerHTML = dentists.length
       ? isEmergency
         ? '<option value="">Assigned emergency doctor</option>'
         : '<option value="">Select an available doctor</option>'
-      : isEmergency
-        ? '<option value="">The emergency doctor is unavailable at this time</option>'
-        : '<option value="">No available doctors match this type and time</option>';
+      : '<option value="">There are no doctors available for this schedule</option>';
     dentists.forEach((dentist) => {
       const option = document.createElement("option");
       option.value = dentist.dentist_id;
@@ -606,7 +606,14 @@ async function handleAddSubmit(event) {
   if (!payload.appointment_date || !payload.appointment_time)
     missing.push("appointment_date");
   if (!payload.appointment_type) missing.push("appointment_type");
-  if (!payload.dentist_id) missing.push("dentist_id");
+  if (!payload.dentist_id) {
+    if (form.dentist_id.dataset.noDoctorsAvailable === "true") {
+      resultBox.innerHTML =
+        '<p style="color:red;">There are no doctors available for this schedule.</p>';
+      return;
+    }
+    missing.push("doctor");
+  }
   if (!payload.status) missing.push("status");
 
   if (missing.length) {
