@@ -685,7 +685,7 @@ function renderPatientInfoDetails(patient) {
       <h3 style="margin-top:0;">Edit ${escapeHtml(fullName || "Patient")}</h3>
       <p class="muted-copy">
         Identity and medical identity fields are locked. Use Patient Status to
-        update the patient's active, inactive, or archived status.
+        update the patient's active or inactive status.
       </p>
       <div class="row">
         <div class="field">
