@@ -627,6 +627,26 @@ button.appointment-calendar-nav:hover {
   border-color: var(--purple);
   background: var(--purple);
 }
+button.appointment-calendar-more {
+  align-self: flex-start;
+  min-height: 24px;
+  margin-top: 1px;
+  padding: 1px 3px;
+  border: 0;
+  color: var(--purple);
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-decoration: underline;
+  box-shadow: none;
+}
+button.appointment-calendar-more:hover,
+button.appointment-calendar-more:focus-visible {
+  color: var(--purple-mid);
+  background: var(--purple-pale);
+  box-shadow: none;
+  transform: none;
+}
 .appointment-calendar-event--scheduled {
   color: #4f236f;
   border-left: 3px solid #7b3fb5;

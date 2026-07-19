@@ -328,7 +328,8 @@ function renderAppointmentsCalendar(
     list.style.cssText = "display:flex;flex-direction:column;gap:4px;";
 
     if (items.length) {
-      items.slice(0, 4).forEach((appt) => {
+      const hiddenAppointmentTags = [];
+      items.forEach((appt, index) => {
         const rawStatus = String(
           appt.appointment_status || "",
         ).toLowerCase();
@@ -350,12 +351,27 @@ function renderAppointmentsCalendar(
         if (status === "cancelled" && appt.cancel_reason) {
           tag.title = `Cancellation reason: ${appt.cancel_reason}`;
         }
+        if (index >= 4) {
+          tag.hidden = true;
+          hiddenAppointmentTags.push(tag);
+        }
         list.appendChild(tag);
       });
-      if (items.length > 4) {
-        const more = document.createElement("div");
-        more.style.cssText = "font-size:11px;color:#666;";
-        more.textContent = `+${items.length - 4} more`;
+      if (hiddenAppointmentTags.length) {
+        const hiddenCount = hiddenAppointmentTags.length;
+        const more = document.createElement("button");
+        more.type = "button";
+        more.className = "appointment-calendar-more";
+        more.textContent = `+${hiddenCount} more`;
+        more.setAttribute("aria-expanded", "false");
+        more.addEventListener("click", () => {
+          const expanded = more.getAttribute("aria-expanded") === "true";
+          hiddenAppointmentTags.forEach((tag) => {
+            tag.hidden = expanded;
+          });
+          more.setAttribute("aria-expanded", String(!expanded));
+          more.textContent = expanded ? `+${hiddenCount} more` : "Show less";
+        });
         list.appendChild(more);
       }
     } else {

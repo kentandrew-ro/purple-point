@@ -447,7 +447,8 @@ function renderAdminCalendar(appointments, container, baseDate) {
     list.style.cssText = "display:flex;flex-direction:column;gap:3px;";
 
     if (items.length) {
-      items.slice(0, 4).forEach((appt) => {
+      const hiddenAppointmentTags = [];
+      items.forEach((appt, index) => {
         const first = (appt.first_name || "").trim();
         const last = (appt.last_name || "").trim();
         const name =
@@ -481,13 +482,28 @@ function renderAdminCalendar(appointments, container, baseDate) {
             loadAdminAppointments(adminCalendarBaseDate),
           );
         });
+        if (index >= 4) {
+          tag.hidden = true;
+          hiddenAppointmentTags.push(tag);
+        }
         list.appendChild(tag);
       });
 
-      if (items.length > 4) {
-        const more = document.createElement("div");
-        more.style.cssText = "font-size:11px;color:#666;margin-top:2px;";
-        more.textContent = `+${items.length - 4} more`;
+      if (hiddenAppointmentTags.length) {
+        const hiddenCount = hiddenAppointmentTags.length;
+        const more = document.createElement("button");
+        more.type = "button";
+        more.className = "appointment-calendar-more";
+        more.textContent = `+${hiddenCount} more`;
+        more.setAttribute("aria-expanded", "false");
+        more.addEventListener("click", () => {
+          const expanded = more.getAttribute("aria-expanded") === "true";
+          hiddenAppointmentTags.forEach((tag) => {
+            tag.hidden = expanded;
+          });
+          more.setAttribute("aria-expanded", String(!expanded));
+          more.textContent = expanded ? `+${hiddenCount} more` : "Show less";
+        });
         list.appendChild(more);
       }
     } else {
