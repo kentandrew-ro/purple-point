@@ -1130,6 +1130,42 @@ body.admin-layout {
   font-size: 0.76rem;
   white-space: nowrap;
 }
+.archived-patient-table-scroll {
+  box-shadow: var(--shadow);
+}
+.admin-layout .content .archived-patient-table {
+  min-width: 1450px;
+  margin-top: 0;
+  box-shadow: none;
+}
+.archived-patient-table th,
+.archived-patient-table td {
+  padding: 9px 10px;
+  white-space: nowrap;
+}
+.archived-patient-table th:nth-child(7),
+.archived-patient-table td:nth-child(7) {
+  min-width: 220px;
+  white-space: normal;
+}
+.archived-patient-table .patient-restore-button {
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 0.76rem;
+}
+#patient-archive-dialog,
+#patient-restore-dialog {
+  width: min(92vw, 620px);
+}
+.patient-archive-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+#patient-archive-message:empty,
+#patient-restore-message:empty {
+  display: none;
+}
 .patient-info-directory-table th:nth-child(1) {
   width: 7%;
 }

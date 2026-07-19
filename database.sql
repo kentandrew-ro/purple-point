@@ -109,7 +109,13 @@ CREATE TABLE patient_records (
   patient_id INT NOT NULL UNIQUE,
   date_registered DATE NOT NULL DEFAULT (CURRENT_DATE),
   patient_status ENUM('active', 'inactive', 'archived') NOT NULL DEFAULT 'active',
-  FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
+  status_before_archive ENUM('active', 'inactive'),
+  archived_at DATETIME,
+  archived_by INT,
+  archive_reason VARCHAR(255),
+  KEY idx_patient_records_archive (patient_status, archived_at),
+  FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE,
+  FOREIGN KEY (archived_by) REFERENCES users(user_id) ON DELETE SET NULL
 );
 
 CREATE TABLE emergency_contacts (

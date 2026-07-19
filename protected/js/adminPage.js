@@ -5,6 +5,7 @@ const ROLE_TABS = Object.freeze({
     "set-schedules",
     "patient-info",
     "patient-status",
+    "archived-patients",
     "dental-records",
     "reports",
     "billing",
@@ -137,6 +138,7 @@ function showTab(name) {
   if (name === "set-schedules") configureScheduleInterface();
   if (name === "patient-info") loadPatientDirectory("info", 1);
   if (name === "patient-status") loadPatientDirectory("status", 1);
+  if (name === "archived-patients") loadArchivedPatients(1);
   if (name === "dental-records") loadPatientDirectory("dental", 1);
 }
 
@@ -1047,6 +1049,15 @@ async function loadPatientStatus(patientId) {
     if (!data.patient.patient_records_id) message.classList.add("error");
     document.getElementById("patient-status-save").disabled =
       !data.patient.patient_records_id;
+    const archiveButton = document.getElementById("patient-archive-button");
+    if (archiveButton) {
+      archiveButton.hidden =
+        managementRole !== "superadmin" ||
+        !data.patient.patient_records_id ||
+        data.patient.patient_status === "archived";
+      archiveButton.dataset.patientId = data.patient.patient_id;
+      archiveButton.dataset.patientName = data.patient.patient_name;
+    }
   } catch (error) {
     message.textContent = error.message;
     message.classList.add("error");
@@ -1349,6 +1360,286 @@ function initPatientDirectories() {
         }
       });
   });
+}
+
+const archivedPatientState = {
+  page: 1,
+  pages: 1,
+  requestId: 0,
+};
+
+function archivedPatientDateTime(value) {
+  if (!value) return "—";
+  const date = new Date(String(value).replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function renderArchivedPatientRows(patients) {
+  return patients
+    .map(
+      (patient) => `
+        <tr>
+          <td>P-${escapeHtml(String(patient.patient_id).padStart(3, "0"))}</td>
+          <td>
+            <strong>${escapeHtml(patient.patient_name || `Patient #${patient.patient_id}`)}</strong><br />
+            <small>${escapeHtml(patient.email || "—")}</small>
+          </td>
+          <td>${escapeHtml(patient.contact_number || "—")}</td>
+          <td>${escapeHtml(patientDirectoryLabel(patient.status_before_archive))}</td>
+          <td>${escapeHtml(archivedPatientDateTime(patient.archived_at))}</td>
+          <td>${escapeHtml(patient.archived_by_name || "Unknown user")}</td>
+          <td>${escapeHtml(patient.archive_reason || "—")}</td>
+          <td>${escapeHtml(patient.appointment_count || 0)}</td>
+          <td>${escapeHtml(patient.dental_record_count || 0)}</td>
+          <td>${escapeHtml(patient.billing_count || 0)}</td>
+          <td>
+            <button
+              type="button"
+              class="patient-restore-button"
+              data-patient-id="${escapeHtml(patient.patient_id)}"
+              data-patient-name="${escapeHtml(patient.patient_name || `Patient #${patient.patient_id}`)}"
+            >
+              Restore
+            </button>
+          </td>
+        </tr>`,
+    )
+    .join("");
+}
+
+async function loadArchivedPatients(page = 1) {
+  if (managementRole !== "superadmin") return;
+  const tbody = document.getElementById("archive-patient-table-body");
+  const message = document.getElementById("archive-patient-list-message");
+  if (!tbody) return;
+
+  archivedPatientState.page = Math.max(1, page);
+  const requestId = ++archivedPatientState.requestId;
+  const params = new URLSearchParams({
+    page: String(archivedPatientState.page),
+    limit: "8",
+  });
+  const filters = {
+    search: "archive-patient-search",
+    date_from: "archive-patient-date-from",
+    date_to: "archive-patient-date-to",
+  };
+  Object.entries(filters).forEach(([key, id]) => {
+    const value = document.getElementById(id)?.value.trim();
+    if (value) params.set(key, value);
+  });
+
+  tbody.innerHTML = '<tr><td colspan="11">Loading archived patients...</td></tr>';
+  if (message) message.textContent = "";
+  try {
+    const response = await fetch(`/api/archives/patients?${params.toString()}`);
+    const data = await response.json().catch(() => ({}));
+    if (requestId !== archivedPatientState.requestId) return;
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Unable to load archived patients.");
+    }
+    const patients = data.patients || [];
+    archivedPatientState.page = Number(data.pagination?.page || 1);
+    archivedPatientState.pages = Number(data.pagination?.pages || 1);
+    tbody.innerHTML = patients.length
+      ? renderArchivedPatientRows(patients)
+      : '<tr><td colspan="11">No archived patients found.</td></tr>';
+
+    const total = Number(data.pagination?.total || 0);
+    document.getElementById(
+      "archive-patient-pagination-summary",
+    ).textContent =
+      `Page ${archivedPatientState.page} of ${archivedPatientState.pages} | ` +
+      `${total} archived ${total === 1 ? "patient" : "patients"}`;
+    document.getElementById("archive-patient-previous-page").disabled =
+      archivedPatientState.page <= 1;
+    document.getElementById("archive-patient-next-page").disabled =
+      archivedPatientState.page >= archivedPatientState.pages;
+  } catch (error) {
+    if (requestId !== archivedPatientState.requestId) return;
+    tbody.innerHTML = '<tr><td colspan="11">Unable to load archived patients.</td></tr>';
+    if (message) message.textContent = error.message;
+  }
+}
+
+function openPatientArchiveDialog(patientId, patientName) {
+  const dialog = document.getElementById("patient-archive-dialog");
+  if (!dialog || managementRole !== "superadmin") return;
+  document.getElementById("patient-archive-id").value = patientId;
+  document.getElementById("patient-archive-name").textContent = patientName;
+  document.getElementById("patient-archive-reason").value = "";
+  document.getElementById("patient-archive-message").textContent = "";
+  if (!dialog.open) dialog.showModal();
+  document.getElementById("patient-archive-reason").focus();
+}
+
+async function submitPatientArchive(event) {
+  event.preventDefault();
+  const patientId = document.getElementById("patient-archive-id")?.value;
+  const reason = document.getElementById("patient-archive-reason")?.value.trim();
+  const button = document.getElementById("patient-archive-confirm");
+  const message = document.getElementById("patient-archive-message");
+  if (!patientId || !reason || !button || !message) return;
+
+  button.disabled = true;
+  message.textContent = "Archiving patient...";
+  message.classList.remove("error", "success");
+  try {
+    const response = await fetch(
+      `/api/patients/${encodeURIComponent(patientId)}/archive`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Unable to archive patient.");
+    }
+    document.getElementById("patient-archive-dialog").close();
+    document.getElementById("patient-status-editor-card").hidden = true;
+    await loadPatientDirectory("status", patientDirectoryState.status.page);
+    const listMessage = document.getElementById("patient-status-list-message");
+    if (listMessage) listMessage.textContent = data.message;
+  } catch (error) {
+    message.textContent = error.message;
+    message.classList.add("error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function openPatientRestoreDialog(patientId, patientName) {
+  const dialog = document.getElementById("patient-restore-dialog");
+  if (!dialog) return;
+  document.getElementById("patient-restore-id").value = patientId;
+  document.getElementById("patient-restore-name").textContent = patientName;
+  document.getElementById("patient-restore-message").textContent = "";
+  if (!dialog.open) dialog.showModal();
+}
+
+async function restoreArchivedPatient() {
+  const patientId = document.getElementById("patient-restore-id")?.value;
+  const button = document.getElementById("patient-restore-confirm");
+  const message = document.getElementById("patient-restore-message");
+  if (!patientId || !button || !message) return;
+
+  button.disabled = true;
+  message.textContent = "Restoring patient...";
+  message.classList.remove("error", "success");
+  try {
+    const response = await fetch(
+      `/api/patients/${encodeURIComponent(patientId)}/restore`,
+      { method: "PATCH" },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Unable to restore patient.");
+    }
+    document.getElementById("patient-restore-dialog").close();
+    await loadArchivedPatients(archivedPatientState.page);
+    const listMessage = document.getElementById("archive-patient-list-message");
+    if (listMessage) listMessage.textContent = data.message;
+  } catch (error) {
+    message.textContent = error.message;
+    message.classList.add("error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function initPatientArchives() {
+  const archiveDialog = document.getElementById("patient-archive-dialog");
+  const restoreDialog = document.getElementById("patient-restore-dialog");
+  document
+    .getElementById("patient-archive-button")
+    ?.addEventListener("click", (event) => {
+      const button = event.currentTarget;
+      openPatientArchiveDialog(
+        button.dataset.patientId,
+        button.dataset.patientName,
+      );
+    });
+  document
+    .getElementById("patient-archive-form")
+    ?.addEventListener("submit", submitPatientArchive);
+  document.getElementById("patient-archive-cancel")?.addEventListener("click", () => {
+    archiveDialog?.close();
+  });
+  document.getElementById("archive-patient-search")?.addEventListener(
+    "input",
+    debounce(() => loadArchivedPatients(1), 250),
+  );
+  document
+    .getElementById("archive-patient-search")
+    ?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") loadArchivedPatients(1);
+    });
+  document
+    .getElementById("archive-patient-apply-filters")
+    ?.addEventListener("click", () => {
+      loadArchivedPatients(1);
+      document
+        .getElementById("archive-patient-filter-panel")
+        ?.removeAttribute("open");
+    });
+  document
+    .getElementById("archive-patient-reset-filters")
+    ?.addEventListener("click", () => {
+      [
+        "archive-patient-search",
+        "archive-patient-date-from",
+        "archive-patient-date-to",
+      ].forEach((id) => {
+        const element = document.getElementById(id);
+        if (element) element.value = "";
+      });
+      loadArchivedPatients(1);
+      document
+        .getElementById("archive-patient-filter-panel")
+        ?.removeAttribute("open");
+    });
+  document
+    .getElementById("archive-patient-previous-page")
+    ?.addEventListener("click", () => {
+      if (archivedPatientState.page > 1) {
+        loadArchivedPatients(archivedPatientState.page - 1);
+      }
+    });
+  document
+    .getElementById("archive-patient-next-page")
+    ?.addEventListener("click", () => {
+      if (archivedPatientState.page < archivedPatientState.pages) {
+        loadArchivedPatients(archivedPatientState.page + 1);
+      }
+    });
+  document
+    .getElementById("archive-patient-table-body")
+    ?.addEventListener("click", (event) => {
+      const button = event.target.closest(".patient-restore-button");
+      if (button) {
+        openPatientRestoreDialog(
+          button.dataset.patientId,
+          button.dataset.patientName,
+        );
+      }
+    });
+  document
+    .getElementById("patient-restore-confirm")
+    ?.addEventListener("click", restoreArchivedPatient);
+  document
+    .getElementById("patient-restore-cancel")
+    ?.addEventListener("click", () => {
+      restoreDialog?.close();
+    });
 }
 
 async function searchDentists(query, targetListId) {
@@ -2217,6 +2508,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   initPatientDirectories();
+  initPatientArchives();
   initDentalRecordsTab();
   initReportsTab();
   initBillingTab();

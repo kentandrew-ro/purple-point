@@ -124,11 +124,15 @@ function registerDentalAdminRoutes(app) {
            u.email
          FROM patients p
          LEFT JOIN users u ON u.user_id = p.user_id
-         WHERE u.first_name LIKE ?
-            OR u.last_name LIKE ?
-            OR CONCAT(u.first_name, ' ', u.last_name) LIKE ?
-            OR u.email LIKE ?
-            OR u.contact_number LIKE ?
+         LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
+         WHERE COALESCE(pr.patient_status, 'active') <> 'archived'
+           AND (
+             u.first_name LIKE ?
+             OR u.last_name LIKE ?
+             OR CONCAT(u.first_name, ' ', u.last_name) LIKE ?
+             OR u.email LIKE ?
+             OR u.contact_number LIKE ?
+           )
          LIMIT 12`,
         [search, search, search, search, search],
       );
@@ -169,7 +173,7 @@ function registerDentalAdminRoutes(app) {
         error: "Staff accounts cannot access dental records.",
       });
     }
-    if (status && !["active", "inactive", "archived"].includes(status)) {
+    if (status && !["active", "inactive"].includes(status)) {
       return res
         .status(400)
         .json({ ok: false, error: "Invalid patient status filter." });
@@ -203,7 +207,7 @@ function registerDentalAdminRoutes(app) {
         .json({ ok: false, error: "Invalid last-visit date filter." });
     }
 
-    const where = [];
+    const where = ["COALESCE(pr.patient_status, 'active') <> 'archived'"];
     const params = [];
     const profileCompleteSql = `(
       pr.patient_records_id IS NOT NULL
@@ -493,9 +497,11 @@ function registerDentalAdminRoutes(app) {
                 p.house_no, p.street, p.barangay, p.city, p.zip_code,
                 ec.contact_name AS emergency_contact_name,
                 ec.contact_number AS emergency_contact_number,
-                COALESCE(pmp.diabetes_status, 'unknown') AS diabetes_status
+                COALESCE(pmp.diabetes_status, 'unknown') AS diabetes_status,
+                COALESCE(pr.patient_status, 'active') AS patient_status
          FROM patients p
          JOIN users u ON u.user_id = p.user_id
+         LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
          LEFT JOIN emergency_contacts ec ON ec.patient_id = p.patient_id
          LEFT JOIN patient_medical_profiles pmp ON pmp.patient_id = p.patient_id
          WHERE p.patient_id = ?
@@ -505,6 +511,13 @@ function registerDentalAdminRoutes(app) {
       if (!rows.length) {
         await conn.rollback();
         return res.status(404).json({ ok: false, error: "Patient not found." });
+      }
+      if (rows[0].patient_status === "archived") {
+        await conn.rollback();
+        return res.status(409).json({
+          ok: false,
+          error: "Archived patient information cannot be edited. Restore the patient first.",
+        });
       }
       const [oldAllergyRows] = await conn.execute(
         `SELECT allergen
@@ -649,7 +662,7 @@ function registerDentalAdminRoutes(app) {
     }
     if (
       !patientStatus ||
-      !["active", "inactive", "archived"].includes(patientStatus)
+      !["active", "inactive"].includes(patientStatus)
     ) {
       return res
         .status(400)
@@ -674,6 +687,12 @@ function registerDentalAdminRoutes(app) {
           ok: false,
           error:
             "The patient must complete their profile before status can be changed.",
+        });
+      }
+      if (rows[0].patient_status === "archived") {
+        return res.status(409).json({
+          ok: false,
+          error: "Archived patients must be restored from Archived Records.",
         });
       }
 

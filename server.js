@@ -5,6 +5,7 @@ const express = require("express");
 const path = require("path");
 const session = require("express-session");
 const { INTERNAL_ERROR_MESSAGE } = require("./lib/http");
+const { registerArchiveRoutes } = require("./routes/archives");
 const { registerAuthProfileRoutes } = require("./routes/authProfiles");
 const { registerAppointmentRoutes } = require("./routes/appointments");
 const { registerBillingAuditRoutes } = require("./routes/billingAudit");
@@ -59,6 +60,7 @@ registerAuthProfileRoutes(app, {
 registerAppointmentRoutes(app);
 registerBillingAuditRoutes(app);
 registerDentalAdminRoutes(app);
+registerArchiveRoutes(app);
 registerReportRoutes(app);
 registerPageRoutes(app);
 

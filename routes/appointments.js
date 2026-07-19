@@ -596,7 +596,10 @@ function registerAppointmentRoutes(app) {
     try {
       await markOverdueAppointments();
       const [[{ total_patients }]] = await pool.execute(
-        "SELECT COUNT(*) AS total_patients FROM patients",
+        `SELECT COUNT(*) AS total_patients
+         FROM patients p
+         LEFT JOIN patient_records pr ON pr.patient_id = p.patient_id
+         WHERE COALESCE(pr.patient_status, 'active') <> 'archived'`,
       );
 
       const role = normalizeRole(req.session.role);

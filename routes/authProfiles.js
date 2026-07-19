@@ -331,6 +331,12 @@ function registerAuthProfileRoutes(
       }
 
       const identity = identityRows[0];
+      if (identity.patient_status === "archived") {
+        return res.status(409).json({
+          ok: false,
+          error: "This patient record is archived and cannot be updated.",
+        });
+      }
       const identityLocked = Boolean(identity.patient_id);
       const first_name = identity.first_name;
       const last_name = identity.last_name;

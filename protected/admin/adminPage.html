@@ -48,6 +48,9 @@
           <a href="#" data-roles="superadmin doctor staff" onclick="showTab('patient-status')">Patient Status</a>
         </li>
         <li>
+          <a href="#" data-roles="superadmin" onclick="showTab('archived-patients')">Archived Records</a>
+        </li>
+        <li>
           <a href="#" data-roles="superadmin doctor" onclick="showTab('dental-records')">Dental Records</a>
         </li>
       </ul>
@@ -564,7 +567,7 @@
       </div>
       <div id="tab-patient-status" class="audit-page" style="display: none">
         <h2>Patient Status</h2>
-        <p>Update whether a patient is active or inactive.</p>
+        <p>Update whether a patient is active or inactive. Superadmins can also archive patient records.</p>
         <div class="audit-toolbar">
           <div class="audit-search-field">
             <label for="patient-status-search">Search</label>
@@ -647,10 +650,126 @@
             </div>
             <div class="actions">
               <button id="patient-status-save" type="button">Save Status</button>
+              <button
+                id="patient-archive-button"
+                type="button"
+                class="danger-button"
+                hidden
+              >
+                Archive Patient
+              </button>
             </div>
           </div>
           <div id="patient-status-message" class="form-message" aria-live="polite"></div>
         </div>
+
+        <dialog id="patient-archive-dialog" aria-labelledby="patient-archive-title">
+          <h3 id="patient-archive-title">Archive Patient</h3>
+          <p>
+            You are about to archive <strong id="patient-archive-name"></strong>.
+            Their history will be preserved, but they will be removed from operational patient lists.
+          </p>
+          <form id="patient-archive-form">
+            <input id="patient-archive-id" type="hidden" />
+            <div class="field">
+              <label for="patient-archive-reason">Archive Reason</label>
+              <textarea
+                id="patient-archive-reason"
+                minlength="3"
+                maxlength="255"
+                placeholder="Explain why this patient record is being archived"
+                required
+              ></textarea>
+              <small class="form-hint">Required, 3–255 characters.</small>
+            </div>
+            <p id="patient-archive-message" class="form-message" aria-live="polite"></p>
+            <div class="actions patient-archive-dialog-actions">
+              <button type="submit" id="patient-archive-confirm" class="danger-button">
+                Confirm Archive
+              </button>
+              <button type="button" id="patient-archive-cancel" class="secondary">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </dialog>
+      </div>
+      <div id="tab-archived-patients" class="audit-page" style="display: none">
+        <h2>Archived Patients</h2>
+        <p>Review archived patient records and restore them when needed.</p>
+
+        <div class="audit-toolbar">
+          <div class="audit-search-field">
+            <label for="archive-patient-search">Search</label>
+            <input
+              id="archive-patient-search"
+              type="search"
+              placeholder="Patient ID, name, email, contact, or reason"
+            />
+          </div>
+          <details class="audit-filter-panel" id="archive-patient-filter-panel">
+            <summary>Filter options</summary>
+            <div class="audit-filter-content">
+              <div class="audit-filter-field">
+                <label for="archive-patient-date-from">Archived From</label>
+                <input id="archive-patient-date-from" type="date" />
+              </div>
+              <div class="audit-filter-field">
+                <label for="archive-patient-date-to">Archived To</label>
+                <input id="archive-patient-date-to" type="date" />
+              </div>
+              <div class="audit-filter-actions">
+                <button type="button" id="archive-patient-apply-filters">Apply Filters</button>
+                <button type="button" id="archive-patient-reset-filters" class="secondary">Reset</button>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <p id="archive-patient-list-message" class="directory-list-message" aria-live="polite"></p>
+        <div class="audit-table-scroll archived-patient-table-scroll">
+          <table class="archived-patient-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Patient</th>
+                <th>Contact</th>
+                <th>Previous Status</th>
+                <th>Archived</th>
+                <th>Archived By</th>
+                <th>Reason</th>
+                <th>Appointments</th>
+                <th>Dental Records</th>
+                <th>Billing</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="archive-patient-table-body">
+              <tr><td colspan="11">Open this tab to load archived patients.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="audit-pagination">
+          <p id="archive-patient-pagination-summary"></p>
+          <div class="audit-pagination-actions">
+            <button type="button" id="archive-patient-previous-page">Previous</button>
+            <button type="button" id="archive-patient-next-page">Next</button>
+          </div>
+        </div>
+
+        <dialog id="patient-restore-dialog" aria-labelledby="patient-restore-title">
+          <h3 id="patient-restore-title">Restore Patient</h3>
+          <p>
+            Restore <strong id="patient-restore-name"></strong> to their previous
+            status? They will return to the operational patient lists.
+          </p>
+          <input id="patient-restore-id" type="hidden" />
+          <p id="patient-restore-message" class="form-message" aria-live="polite"></p>
+          <div class="actions patient-archive-dialog-actions">
+            <button type="button" id="patient-restore-confirm">Restore Patient</button>
+            <button type="button" id="patient-restore-cancel" class="secondary">Cancel</button>
+          </div>
+        </dialog>
       </div>
       <div id="tab-dental-records" class="audit-page" style="display: none">
         <h2>Dental Records</h2>
@@ -1556,6 +1675,8 @@
                   <option value="UPDATE_PATIENT_STATUS">
                     Update patient status
                   </option>
+                  <option value="ARCHIVE_PATIENT">Archive patient</option>
+                  <option value="RESTORE_PATIENT">Restore patient</option>
                 </select>
               </div>
 
