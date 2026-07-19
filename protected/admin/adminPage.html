@@ -54,6 +54,9 @@
       <span class="section-label">Finance &amp; Logs</span>
       <ul>
         <li>
+          <a href="#" data-roles="superadmin doctor staff" onclick="showTab('reports')">Reports</a>
+        </li>
+        <li>
           <a href="#" data-roles="superadmin staff" onclick="showTab('billing')">Billing &amp; Payments</a>
         </li>
         <li><a href="#" data-roles="superadmin doctor staff" onclick="showTab('audit-logs')">Audit Logs</a></li>
@@ -1019,6 +1022,181 @@
             </table>
           </div>
         </div>
+      </div>
+      <div id="tab-reports" class="reports-page" style="display: none">
+        <h2>Reports</h2>
+        <p>Select a report, choose its filters, and display the results.</p>
+
+        <div class="report-type-grid" role="group" aria-label="Report type">
+          <button
+            type="button"
+            class="report-type-card is-selected"
+            data-report-type="appointments"
+            data-report-roles="superadmin doctor staff"
+            aria-pressed="true"
+          >
+            <strong>Appointment Report</strong>
+            <span>Appointments, booked types, services, and statuses.</span>
+          </button>
+          <button
+            type="button"
+            class="report-type-card"
+            data-report-type="patients"
+            data-report-roles="superadmin doctor staff"
+            aria-pressed="false"
+          >
+            <strong>Patient Report</strong>
+            <span>Registration, contact, status, and appointment activity.</span>
+          </button>
+          <button
+            type="button"
+            class="report-type-card"
+            data-report-type="treatments"
+            data-report-roles="superadmin doctor"
+            aria-pressed="false"
+          >
+            <strong>Treatment Report</strong>
+            <span>Recorded treatments, doctors, duration, and price.</span>
+          </button>
+          <button
+            type="button"
+            class="report-type-card"
+            data-report-type="billing"
+            data-report-roles="superadmin staff"
+            aria-pressed="false"
+          >
+            <strong>Billing Report</strong>
+            <span>Statements, payments, balances, and billing statuses.</span>
+          </button>
+        </div>
+
+        <form id="report-filter-form" class="card report-filter-card">
+          <div class="report-filter-heading">
+            <div>
+              <h3 id="report-filter-title">Appointment Report</h3>
+              <p id="report-filter-description">
+                Results are sorted by appointment date and time.
+              </p>
+            </div>
+          </div>
+
+          <div class="report-filter-grid">
+            <div class="field report-filter-group" data-report-types="appointments patients treatments billing">
+              <label for="report-date-from">From</label>
+              <input id="report-date-from" name="date_from" type="date" />
+            </div>
+            <div class="field report-filter-group" data-report-types="appointments patients treatments billing">
+              <label for="report-date-to">To</label>
+              <input id="report-date-to" name="date_to" type="date" />
+            </div>
+            <div class="field report-filter-group" data-report-types="appointments treatments">
+              <label for="report-dentist-filter">Doctor</label>
+              <select id="report-dentist-filter" name="dentist_id">
+                <option value="">All doctors</option>
+              </select>
+            </div>
+            <div class="field report-filter-group" data-report-types="appointments">
+              <label for="report-appointment-status">Status</label>
+              <select id="report-appointment-status" name="status">
+                <option value="">All statuses</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="no_show">Late / No Show</option>
+              </select>
+            </div>
+            <div class="field report-filter-group" data-report-types="appointments">
+              <label for="report-appointment-type">Appointment Type</label>
+              <select id="report-appointment-type" name="appointment_type">
+                <option value="">All appointment types</option>
+                <option value="consultation">Consultation</option>
+                <option value="cleaning">Cleaning</option>
+                <option value="filling">Filling</option>
+                <option value="extraction">Extraction</option>
+                <option value="other">Other</option>
+                <option value="emergency">Emergency</option>
+              </select>
+            </div>
+            <div class="field report-filter-group" data-report-types="patients" hidden>
+              <label for="report-patient-status">Status</label>
+              <select id="report-patient-status" name="status" disabled>
+                <option value="">All statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+            <div class="field report-filter-group" data-report-types="patients" hidden>
+              <label for="report-patient-gender">Sex</label>
+              <select id="report-patient-gender" name="gender" disabled>
+                <option value="">All sexes</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+            </div>
+            <div class="field report-filter-group" data-report-types="treatments" hidden>
+              <label for="report-treatment-category">Treatment Category</label>
+              <input
+                id="report-treatment-category"
+                name="category"
+                type="search"
+                placeholder="All categories"
+                disabled
+              />
+            </div>
+            <div class="field report-filter-group" data-report-types="billing" hidden>
+              <label for="report-billing-status">Status</label>
+              <select id="report-billing-status" name="status" disabled>
+                <option value="">All statuses</option>
+                <option value="unpaid">Unpaid</option>
+                <option value="partial">Partially paid</option>
+                <option value="paid">Fully paid</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="report-filter-actions">
+            <button type="submit" id="report-generate-button">
+              Generate Report
+            </button>
+            <button type="button" id="report-reset-button" class="secondary">
+              Reset Filters
+            </button>
+          </div>
+          <p id="report-message" aria-live="polite"></p>
+        </form>
+
+        <dialog id="report-dialog" aria-labelledby="report-dialog-title">
+          <div class="report-dialog-heading">
+            <div>
+              <h3 id="report-dialog-title">Report</h3>
+              <p id="report-dialog-filters"></p>
+            </div>
+            <button
+              type="button"
+              id="report-dialog-close-icon"
+              class="report-dialog-close-icon"
+              aria-label="Close report"
+            >
+              &times;
+            </button>
+          </div>
+          <p id="report-record-count" class="report-record-count"></p>
+          <div class="report-table-scroll">
+            <table class="report-table">
+              <thead id="report-table-head"></thead>
+              <tbody id="report-table-body"></tbody>
+            </table>
+          </div>
+          <div class="report-dialog-footer">
+            <div class="report-pagination" aria-label="Report pages">
+              <button type="button" id="report-previous-page">Previous</button>
+              <span id="report-page-summary">Page 1 of 1</span>
+              <button type="button" id="report-next-page">Next</button>
+            </div>
+            <button type="button" id="report-dialog-close">Close</button>
+          </div>
+        </dialog>
       </div>
       <div id="tab-billing" style="display: none">
         <h2>Billing &amp; Payments</h2>

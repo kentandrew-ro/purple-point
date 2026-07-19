@@ -6,6 +6,7 @@ const ROLE_TABS = Object.freeze({
     "patient-info",
     "patient-status",
     "dental-records",
+    "reports",
     "billing",
     "audit-logs",
     "doctor-profiles",
@@ -17,6 +18,7 @@ const ROLE_TABS = Object.freeze({
     "patient-info",
     "patient-status",
     "dental-records",
+    "reports",
     "audit-logs",
   ]),
   staff: new Set([
@@ -25,6 +27,7 @@ const ROLE_TABS = Object.freeze({
     "set-schedules",
     "patient-info",
     "patient-status",
+    "reports",
     "billing",
     "audit-logs",
   ]),
@@ -40,6 +43,75 @@ const SCHEDULE_WEEKDAYS = Object.freeze([
   "Saturday",
   "Sunday",
 ]);
+
+const REPORT_CONFIG = Object.freeze({
+  appointments: {
+    endpoint: "/api/reports/appointments",
+    title: "Appointment Report",
+    description: "Results are sorted by appointment date and time.",
+    columns: [
+      { key: "appointment_id", label: "ID" },
+      { key: "appointment_date", label: "Date", format: "date" },
+      { key: "appointment_time", label: "Time" },
+      { key: "patient_name", label: "Patient" },
+      { key: "doctor_name", label: "Doctor" },
+      { key: "appointment_type", label: "Booked Type", format: "label" },
+      { key: "service_availed", label: "Service Availed" },
+      { key: "appointment_status", label: "Status", format: "status" },
+      { key: "reason_for_visit", label: "Reason" },
+    ],
+  },
+  patients: {
+    endpoint: "/api/reports/patients",
+    title: "Patient Report",
+    description: "Results are sorted by registration date and patient name.",
+    columns: [
+      { key: "patient_id", label: "Patient ID" },
+      { key: "patient_name", label: "Patient" },
+      { key: "email", label: "Email" },
+      { key: "contact_number", label: "Contact" },
+      { key: "date_registered", label: "Registered", format: "date" },
+      { key: "patient_status", label: "Status", format: "status" },
+      { key: "last_appointment", label: "Last Appointment", format: "dateOrText" },
+      { key: "appointment_count", label: "Appointments" },
+    ],
+  },
+  treatments: {
+    endpoint: "/api/reports/treatments",
+    title: "Treatment Report",
+    description: "Results are sorted by visit date and patient name.",
+    columns: [
+      { key: "visit_date", label: "Visit Date", format: "date" },
+      { key: "patient_name", label: "Patient" },
+      { key: "doctor_name", label: "Doctor" },
+      { key: "treatment_name", label: "Treatment" },
+      { key: "category", label: "Category" },
+      { key: "teeth_involved", label: "Teeth" },
+      { key: "actual_duration", label: "Duration", format: "minutes" },
+      { key: "actual_price", label: "Price", format: "currency" },
+    ],
+  },
+  billing: {
+    endpoint: "/api/reports/billing",
+    title: "Billing Report",
+    description: "Results are sorted by billing date and statement ID.",
+    columns: [
+      { key: "billing_id", label: "Billing ID" },
+      { key: "billing_date", label: "Date", format: "date" },
+      { key: "patient_name", label: "Patient" },
+      { key: "treatment_name", label: "Treatment" },
+      { key: "total_amount", label: "Total", format: "currency" },
+      { key: "amount_paid", label: "Paid", format: "currency" },
+      { key: "balance", label: "Balance", format: "currency" },
+      { key: "billing_status", label: "Status", format: "status" },
+    ],
+  },
+});
+
+let selectedReportType = "appointments";
+let reportCurrentPage = 1;
+let reportTotalPages = 1;
+let reportLastQuery = new URLSearchParams();
 
 function normalizeManagementRole(role) {
   return role === "admin" ? "superadmin" : role;
@@ -161,6 +233,7 @@ async function initializeRoleInterface() {
     }
 
     document.body.dataset.role = managementRole;
+    configureReportAccess();
     document.querySelectorAll(".sidebar a[data-roles]").forEach((link) => {
       const allowedRoles = (link.dataset.roles || "").split(/\s+/);
       link.closest("li").hidden = !allowedRoles.includes(managementRole);
@@ -2145,6 +2218,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   initPatientDirectories();
   initDentalRecordsTab();
+  initReportsTab();
   initBillingTab();
   initAuditLogsTab();
 });
@@ -3904,4 +3978,275 @@ function initAuditLogsTab() {
     ?.addEventListener("click", () => {
       document.getElementById("audit-details-dialog").close();
     });
+}
+
+function reportLocalIsoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function setDefaultReportDates() {
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const dateFrom = document.getElementById("report-date-from");
+  const dateTo = document.getElementById("report-date-to");
+  if (dateFrom) dateFrom.value = reportLocalIsoDate(firstDay);
+  if (dateTo) dateTo.value = reportLocalIsoDate(lastDay);
+}
+
+function reportDisplayLabel(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return "—";
+  if (normalized === "no_show") return "Late / No Show";
+  if (normalized === "partial") return "Partially paid";
+  if (normalized === "paid") return "Fully paid";
+  return normalized
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function reportDisplayDate(value) {
+  const text = String(value ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return text || "—";
+  const [year, month, day] = text.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatReportCell(value, format) {
+  if (format === "date") return reportDisplayDate(value);
+  if (format === "dateOrText") return reportDisplayDate(value);
+  if (format === "currency") return formatPeso(value);
+  if (format === "label" || format === "status") {
+    return reportDisplayLabel(value);
+  }
+  if (format === "minutes") {
+    const minutes = Number(value);
+    return minutes > 0 ? `${minutes} min` : "—";
+  }
+  if (value === null || value === undefined || value === "") return "—";
+  return String(value);
+}
+
+function syncReportFilterVisibility() {
+  document.querySelectorAll(".report-filter-group").forEach((group) => {
+    const reportTypes = (group.dataset.reportTypes || "").split(/\s+/);
+    const isDoctorFilter = group.querySelector("#report-dentist-filter");
+    const shouldHide =
+      !reportTypes.includes(selectedReportType) ||
+      (Boolean(isDoctorFilter) && managementRole === "doctor");
+    group.hidden = shouldHide;
+    group.querySelectorAll("input, select").forEach((control) => {
+      control.disabled = shouldHide;
+    });
+  });
+}
+
+function selectReportType(type) {
+  const config = REPORT_CONFIG[type];
+  if (!config) return;
+  selectedReportType = type;
+  document.querySelectorAll(".report-type-card").forEach((card) => {
+    const selected = card.dataset.reportType === type;
+    card.classList.toggle("is-selected", selected);
+    card.setAttribute("aria-pressed", String(selected));
+  });
+  const title = document.getElementById("report-filter-title");
+  const description = document.getElementById("report-filter-description");
+  const message = document.getElementById("report-message");
+  if (title) title.textContent = config.title;
+  if (description) description.textContent = config.description;
+  if (message) message.textContent = "";
+  syncReportFilterVisibility();
+}
+
+function configureReportAccess() {
+  const cards = [...document.querySelectorAll(".report-type-card")];
+  cards.forEach((card) => {
+    const allowedRoles = (card.dataset.reportRoles || "").split(/\s+/);
+    card.hidden = Boolean(managementRole) && !allowedRoles.includes(managementRole);
+  });
+  const selectedCard = cards.find(
+    (card) => card.dataset.reportType === selectedReportType && !card.hidden,
+  );
+  const availableCard = selectedCard || cards.find((card) => !card.hidden);
+  if (availableCard) selectReportType(availableCard.dataset.reportType);
+}
+
+async function loadReportDentists() {
+  const select = document.getElementById("report-dentist-filter");
+  if (!select) return;
+  try {
+    const response = await fetch("/api/dentists");
+    const dentists = await response.json().catch(() => []);
+    if (!response.ok || !Array.isArray(dentists)) return;
+    dentists.forEach((dentist) => {
+      const option = document.createElement("option");
+      option.value = String(dentist.dentist_id);
+      option.textContent = `Dr. ${dentist.first_name} ${dentist.last_name}`;
+      select.appendChild(option);
+    });
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function buildReportQuery() {
+  const form = document.getElementById("report-filter-form");
+  const query = new URLSearchParams();
+  if (!form) return query;
+  new FormData(form).forEach((value, key) => {
+    const normalized = String(value).trim();
+    if (normalized) query.set(key, normalized);
+  });
+  query.set("limit", "10");
+  return query;
+}
+
+function reportFilterSummary() {
+  const form = document.getElementById("report-filter-form");
+  if (!form) return "All records";
+  const parts = [];
+  form.querySelectorAll("input:not(:disabled), select:not(:disabled)").forEach(
+    (control) => {
+      if (!control.value) return;
+      const label = form.querySelector(`label[for="${control.id}"]`)?.textContent;
+      let value = control.value;
+      if (control.type === "date") value = reportDisplayDate(value);
+      if (control.tagName === "SELECT") {
+        value = control.options[control.selectedIndex]?.textContent || value;
+      }
+      parts.push(`${label || control.name}: ${value}`);
+    },
+  );
+  return parts.length ? parts.join(" • ") : "All records";
+}
+
+function renderReportTable(data) {
+  const config = REPORT_CONFIG[selectedReportType];
+  const head = document.getElementById("report-table-head");
+  const body = document.getElementById("report-table-body");
+  if (!config || !head || !body) return;
+
+  head.replaceChildren();
+  const headingRow = document.createElement("tr");
+  config.columns.forEach((column) => {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = column.label;
+    headingRow.appendChild(th);
+  });
+  head.appendChild(headingRow);
+
+  body.replaceChildren();
+  if (!data.rows?.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = config.columns.length;
+    cell.textContent = "No records match the selected filters.";
+    row.appendChild(cell);
+    body.appendChild(row);
+    return;
+  }
+
+  data.rows.forEach((item) => {
+    const row = document.createElement("tr");
+    config.columns.forEach((column) => {
+      const cell = document.createElement("td");
+      cell.textContent = formatReportCell(item[column.key], column.format);
+      row.appendChild(cell);
+    });
+    body.appendChild(row);
+  });
+}
+
+async function loadReport(page = 1) {
+  const config = REPORT_CONFIG[selectedReportType];
+  const message = document.getElementById("report-message");
+  const generateButton = document.getElementById("report-generate-button");
+  if (!config) return;
+  const query = new URLSearchParams(reportLastQuery);
+  query.set("page", String(page));
+  if (message) message.textContent = "";
+  if (generateButton) {
+    generateButton.disabled = true;
+    generateButton.textContent = "Generating...";
+  }
+
+  try {
+    const response = await fetch(`${config.endpoint}?${query.toString()}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Unable to generate the report.");
+    }
+
+    reportCurrentPage = Number(data.pagination?.page || 1);
+    reportTotalPages = Number(data.pagination?.pages || 1);
+    renderReportTable(data);
+    document.getElementById("report-dialog-title").textContent =
+      data.title || config.title;
+    document.getElementById("report-dialog-filters").textContent =
+      reportFilterSummary();
+    const total = Number(data.pagination?.total || 0);
+    document.getElementById("report-record-count").textContent =
+      `${total} ${total === 1 ? "record" : "records"}`;
+    document.getElementById("report-page-summary").textContent =
+      `Page ${reportCurrentPage} of ${reportTotalPages}`;
+    document.getElementById("report-previous-page").disabled =
+      reportCurrentPage <= 1;
+    document.getElementById("report-next-page").disabled =
+      reportCurrentPage >= reportTotalPages;
+    const dialog = document.getElementById("report-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
+  } catch (error) {
+    if (message) message.textContent = error.message;
+  } finally {
+    if (generateButton) {
+      generateButton.disabled = false;
+      generateButton.textContent = "Generate Report";
+    }
+  }
+}
+
+function initReportsTab() {
+  const form = document.getElementById("report-filter-form");
+  const dialog = document.getElementById("report-dialog");
+  if (!form || !dialog) return;
+
+  setDefaultReportDates();
+  configureReportAccess();
+  loadReportDentists();
+
+  document.querySelectorAll(".report-type-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      if (!card.hidden) selectReportType(card.dataset.reportType);
+    });
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    reportLastQuery = buildReportQuery();
+    await loadReport(1);
+  });
+  document.getElementById("report-reset-button")?.addEventListener("click", () => {
+    form.reset();
+    setDefaultReportDates();
+    syncReportFilterVisibility();
+    document.getElementById("report-message").textContent = "";
+  });
+  document.getElementById("report-previous-page")?.addEventListener("click", () => {
+    if (reportCurrentPage > 1) loadReport(reportCurrentPage - 1);
+  });
+  document.getElementById("report-next-page")?.addEventListener("click", () => {
+    if (reportCurrentPage < reportTotalPages) loadReport(reportCurrentPage + 1);
+  });
+  ["report-dialog-close", "report-dialog-close-icon"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("click", () => dialog.close());
+  });
 }

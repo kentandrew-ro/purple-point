@@ -10,6 +10,7 @@ const { registerAppointmentRoutes } = require("./routes/appointments");
 const { registerBillingAuditRoutes } = require("./routes/billingAudit");
 const { registerDentalAdminRoutes } = require("./routes/dentalAdmin");
 const { registerPageRoutes } = require("./routes/pages");
+const { registerReportRoutes } = require("./routes/reports");
 
 const app = express();
 const PORT = process.env.PORT;
@@ -58,6 +59,7 @@ registerAuthProfileRoutes(app, {
 registerAppointmentRoutes(app);
 registerBillingAuditRoutes(app);
 registerDentalAdminRoutes(app);
+registerReportRoutes(app);
 registerPageRoutes(app);
 
 app.use((error, req, res, next) => {
