@@ -82,6 +82,8 @@ CREATE TABLE appointments (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   KEY idx_appointments_dentist_slot
     (dentist_id, appointment_date, appointment_time, appointment_status),
+  KEY idx_appointments_patient_slot
+    (patient_id, appointment_date, appointment_time, appointment_status),
   FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
   FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id)
 );

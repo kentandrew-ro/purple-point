@@ -318,15 +318,37 @@ function registerAppointmentRoutes(app) {
       bookingConn = await pool.getConnection();
       await bookingConn.beginTransaction();
 
-      // Serialize booking attempts for the same dentist. The lock is held
-      // through the conflict check and insert so concurrent requests cannot
-      // both claim the same date and time.
+      // Lock both booking participants before checking the slot. The patient
+      // lock serializes simultaneous requests made for different dentists,
+      // while the dentist lock prevents the doctor from being double-booked.
+      await bookingConn.execute(
+        "SELECT patient_id FROM patients WHERE patient_id = ? FOR UPDATE",
+        [patient_id],
+      );
       await bookingConn.execute(
         "SELECT dentist_id FROM dentist WHERE dentist_id = ? FOR UPDATE",
         [dentist_id],
       );
 
-      const [conflicts] = await bookingConn.execute(
+      const [patientConflicts] = await bookingConn.execute(
+        `SELECT appointment_id
+         FROM appointments
+         WHERE patient_id = ?
+           AND appointment_date = ?
+           AND appointment_time = ?
+           AND appointment_status <> 'cancelled'
+         LIMIT 1`,
+        [patient_id, appointment_date, appointment_time],
+      );
+      if (patientConflicts.length) {
+        await bookingConn.rollback();
+        return res.status(409).json({
+          ok: false,
+          error: "The patient already has an appointment at that date and time.",
+        });
+      }
+
+      const [dentistConflicts] = await bookingConn.execute(
         `SELECT appointment_id
          FROM appointments
          WHERE dentist_id = ?
@@ -336,7 +358,7 @@ function registerAppointmentRoutes(app) {
          LIMIT 1`,
         [dentist_id, appointment_date, appointment_time],
       );
-      if (conflicts.length) {
+      if (dentistConflicts.length) {
         await bookingConn.rollback();
         return res.status(409).json({
           ok: false,
